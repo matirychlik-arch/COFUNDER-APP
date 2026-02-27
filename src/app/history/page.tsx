@@ -2,21 +2,30 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 import type { Conversation } from "@/types";
-import { getAllConversations } from "@/lib/storage";
+import { getAllConversations, initStorageUser } from "@/lib/storage";
 import { formatDate, truncate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { ChevronRight, MessageSquare } from "lucide-react";
 import AppSidebar from "@/components/layout/AppSidebar";
 
 export default function HistoryPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTag, setActiveTag] = useState<string>("all");
 
+  if (session?.user?.id) initStorageUser(session.user.id);
+
   useEffect(() => {
+    if (status === "loading") return;
+    if (!session?.user?.id) { router.replace("/"); return; }
+    initStorageUser(session.user.id);
     setConversations(getAllConversations());
-  }, []);
+  }, [session, status, router]);
 
   // Collect all unique tags from ended conversations
   const allTags = Array.from(

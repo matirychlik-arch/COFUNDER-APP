@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import type { Conversation } from "@/types";
-import { getAllConversations } from "@/lib/storage";
+import { getAllConversations, initStorageUser } from "@/lib/storage";
 import { DEFAULT_FOLDERS } from "@/lib/folders";
 import { getWeekRange } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, MessageSquare, Zap, BookOpen } from "lucide-react";
@@ -10,12 +12,19 @@ import AppSidebar from "@/components/layout/AppSidebar";
 import { cn } from "@/lib/utils";
 
 export default function InsightsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [weekOffset, setWeekOffset] = useState(0);
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
+  if (session?.user?.id) initStorageUser(session.user.id);
+
   useEffect(() => {
+    if (status === "loading") return;
+    if (!session?.user?.id) { router.replace("/"); return; }
+    initStorageUser(session.user.id);
     setConversations(getAllConversations());
-  }, []);
+  }, [session, status, router]);
 
   const { start, end, label } = getWeekRange(weekOffset);
 

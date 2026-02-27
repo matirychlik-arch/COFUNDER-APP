@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import type { UserProfile } from "@/types";
-import { getUserProfile, updateUserProfile, resetConversations, resetAllData } from "@/lib/storage";
-import { Eye, EyeOff, AlertTriangle, CheckCircle, Download } from "lucide-react";
+import { getUserProfile, updateUserProfile, resetConversations, resetAllData, initStorageUser } from "@/lib/storage";
+import { Eye, EyeOff, AlertTriangle, CheckCircle, Download, LogOut } from "lucide-react";
 import AppSidebar from "@/components/layout/AppSidebar";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [showDeepseekKey, setShowDeepseekKey] = useState(false);
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
@@ -18,11 +21,18 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [confirmReset, setConfirmReset] = useState<"conversations" | "account" | null>(null);
 
+  // Sync storage namespace
+  if (session?.user?.id) initStorageUser(session.user.id);
+
   useEffect(() => {
+    if (status === "loading") return;
+    if (!session?.user?.id) { router.replace("/"); return; }
+
+    initStorageUser(session.user.id);
     const p = getUserProfile();
     if (!p) { router.replace("/onboarding"); return; }
     setProfile(p);
-  }, [router]);
+  }, [session, status, router]);
 
   const update = (field: keyof UserProfile, value: string | boolean) => {
     setProfile((prev) => prev ? { ...prev, [field]: value } : prev);
@@ -43,7 +53,7 @@ export default function SettingsPage() {
 
   const handleDeleteAccount = () => {
     resetAllData();
-    router.replace("/");
+    router.replace("/onboarding");
   };
 
   const handleExportProfile = () => {
@@ -58,7 +68,7 @@ export default function SettingsPage() {
     URL.revokeObjectURL(url);
   };
 
-  if (!profile) return null;
+  if (status === "loading" || !profile) return null;
 
   return (
     <div className="flex min-h-screen bg-white">
@@ -66,6 +76,34 @@ export default function SettingsPage() {
       <main className="flex-1 ml-16">
         <div className="max-w-lg mx-auto px-6 py-8 space-y-8">
           <h1 className="text-2xl font-bold text-[#1A1A2E]">ustawienia</h1>
+
+          {/* Google account info */}
+          {session?.user && (
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="flex items-center gap-3">
+                {session.user.image && (
+                  <Image
+                    src={session.user.image}
+                    alt={session.user.name ?? ""}
+                    width={36}
+                    height={36}
+                    className="rounded-full"
+                  />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-[#1A1A2E]">{session.user.name}</p>
+                  <p className="text-xs text-gray-400">{session.user.email}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
+              >
+                <LogOut size={14} />
+                wyloguj
+              </button>
+            </div>
+          )}
 
           {/* Profile */}
           <section className="space-y-4">
@@ -232,12 +270,12 @@ export default function SettingsPage() {
 
           {/* Export profile */}
           <section className="space-y-3 border-t border-gray-100 pt-6">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">backup profilu</h2>
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">backup danych</h2>
             <div className="p-4 border-2 border-gray-100 rounded-xl flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-[#1A1A2E]">eksportuj profil</p>
+                <p className="text-sm font-medium text-[#1A1A2E]">eksportuj profil i klucze</p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Pobierz JSON z Twoim profilem i kluczami API. Użyj go aby przywrócić konto na innym urządzeniu lub po resecie.
+                  Pobierz JSON z ustawieniami i kluczami API. Przydatne przy zmianie przeglądarki.
                 </p>
               </div>
               <button
@@ -265,24 +303,11 @@ export default function SettingsPage() {
                 </p>
                 {confirmReset === "conversations" ? (
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setConfirmReset(null)}
-                      className="flex-1 py-2 border-2 border-gray-200 rounded-xl text-xs text-gray-600"
-                    >
-                      anuluj
-                    </button>
-                    <button
-                      onClick={handleResetConversations}
-                      className="flex-1 py-2 bg-red-500 text-white rounded-xl text-xs font-medium"
-                    >
-                      tak, usuń
-                    </button>
+                    <button onClick={() => setConfirmReset(null)} className="flex-1 py-2 border-2 border-gray-200 rounded-xl text-xs text-gray-600">anuluj</button>
+                    <button onClick={handleResetConversations} className="flex-1 py-2 bg-red-500 text-white rounded-xl text-xs font-medium">tak, usuń</button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setConfirmReset("conversations")}
-                    className="py-2 px-4 border-2 border-red-200 text-red-500 rounded-xl text-xs hover:bg-red-50 transition-colors"
-                  >
+                  <button onClick={() => setConfirmReset("conversations")} className="py-2 px-4 border-2 border-red-200 text-red-500 rounded-xl text-xs hover:bg-red-50 transition-colors">
                     wyczyść historię
                   </button>
                 )}
@@ -291,28 +316,15 @@ export default function SettingsPage() {
               <div className="p-4 border-2 border-red-100 rounded-xl">
                 <p className="text-sm font-medium text-[#1A1A2E]">usuń wszystkie dane</p>
                 <p className="text-xs text-gray-400 mt-0.5 mb-3">
-                  resetuje aplikację — profil, rozmowy, wszystko. Wróci do onboardingu.
+                  resetuje profil i rozmowy — wróci do onboardingu. Google login zostaje.
                 </p>
                 {confirmReset === "account" ? (
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setConfirmReset(null)}
-                      className="flex-1 py-2 border-2 border-gray-200 rounded-xl text-xs text-gray-600"
-                    >
-                      anuluj
-                    </button>
-                    <button
-                      onClick={handleDeleteAccount}
-                      className="flex-1 py-2 bg-red-500 text-white rounded-xl text-xs font-medium"
-                    >
-                      tak, usuń wszystko
-                    </button>
+                    <button onClick={() => setConfirmReset(null)} className="flex-1 py-2 border-2 border-gray-200 rounded-xl text-xs text-gray-600">anuluj</button>
+                    <button onClick={handleDeleteAccount} className="flex-1 py-2 bg-red-500 text-white rounded-xl text-xs font-medium">tak, usuń wszystko</button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setConfirmReset("account")}
-                    className="py-2 px-4 bg-red-500 text-white rounded-xl text-xs font-medium hover:bg-red-600 transition-colors"
-                  >
+                  <button onClick={() => setConfirmReset("account")} className="py-2 px-4 bg-red-500 text-white rounded-xl text-xs font-medium hover:bg-red-600 transition-colors">
                     usuń wszystkie dane
                   </button>
                 )}

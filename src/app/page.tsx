@@ -1,45 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { getUserProfile, saveUserProfile } from "@/lib/storage";
-import type { UserProfile } from "@/types";
+import { getUserProfile, initStorageUser } from "@/lib/storage";
 import AvatarOrb from "@/components/chat/AvatarOrb";
-
-type Screen = "loading" | "welcome";
+import Image from "next/image";
 
 export default function RootPage() {
+  const { data: session, status } = useSession();
   const router = useRouter();
-  const [screen, setScreen] = useState<Screen>("loading");
-  const [importText, setImportText] = useState("");
-  const [importError, setImportError] = useState("");
-  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
+    if (status === "loading") return;
+    if (!session?.user?.id) return;
+
+    initStorageUser(session.user.id);
     const profile = getUserProfile();
     if (profile?.onboardingCompleted) {
       router.replace("/chat");
     } else {
-      setScreen("welcome");
+      router.replace("/onboarding");
     }
-  }, [router]);
+  }, [session, status, router]);
 
-  const handleImport = () => {
-    setImportError("");
-    try {
-      const parsed = JSON.parse(importText) as UserProfile;
-      if (!parsed.name || !parsed.onboardingCompleted) {
-        setImportError("Nieprawidłowy plik profilu. Upewnij się, że eksportowałeś go z ustawień.");
-        return;
-      }
-      saveUserProfile(parsed);
-      router.replace("/chat");
-    } catch {
-      setImportError("Nieprawidłowy JSON. Wklej dokładnie to, co skopiowałeś z ustawień.");
-    }
-  };
-
-  if (screen === "loading") {
+  // Loading
+  if (status === "loading" || (status === "authenticated" && session?.user?.id)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-10 h-10 rounded-full bg-[#F5A623] animate-orb-breath" />
@@ -47,79 +33,53 @@ export default function RootPage() {
     );
   }
 
+  // Not signed in — show landing
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-white">
-      <div className="w-full max-w-sm flex flex-col items-center gap-8">
+      <div className="w-full max-w-sm flex flex-col items-center gap-10">
         {/* Logo */}
         <div className="flex flex-col items-center gap-3">
           <AvatarOrb size="lg" state="breath" />
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-[#1A1A2E]">foun</h1>
+            <h1 className="text-3xl font-bold text-[#1A1A2E] tracking-tight">foun</h1>
             <p className="text-sm text-gray-500 mt-1">twój AI co-founder</p>
           </div>
         </div>
 
-        {!showImport ? (
-          <>
-            {/* New user */}
-            <div className="w-full flex flex-col gap-3">
-              <button
-                onClick={() => router.push("/onboarding")}
-                className="w-full py-4 bg-[#1A1A2E] text-white rounded-2xl text-sm font-medium hover:bg-opacity-90 transition-all active:scale-95 shadow-sm"
-              >
-                zaczynam od nowa
-              </button>
-
-              <button
-                onClick={() => setShowImport(true)}
-                className="w-full py-4 border-2 border-gray-200 text-gray-600 rounded-2xl text-sm font-medium hover:border-gray-300 transition-all active:scale-95"
-              >
-                mam już konto — przywróć profil
-              </button>
+        {/* Value props */}
+        <div className="w-full space-y-2 text-sm text-gray-600">
+          {[
+            { icon: "🧠", text: "pamięta Twój startup i łączy kropki" },
+            { icon: "🎯", text: "konkretne rady, nie ogólniki" },
+            { icon: "🎙️", text: "rozmawia głosem — jak prawdziwy co-founder" },
+          ].map(({ icon, text }) => (
+            <div key={text} className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl">
+              <span className="text-lg">{icon}</span>
+              <span>{text}</span>
             </div>
+          ))}
+        </div>
 
-            <p className="text-xs text-gray-400 text-center max-w-xs">
-              Twoje dane są przechowywane lokalnie w przeglądarce. Żeby przenieść profil między urządzeniami, użyj eksportu w ustawieniach.
-            </p>
-          </>
-        ) : (
-          <>
-            {/* Import profile */}
-            <div className="w-full flex flex-col gap-3">
-              <div>
-                <p className="text-sm font-medium text-[#1A1A2E] mb-1">wklej swój profil</p>
-                <p className="text-xs text-gray-400 mb-3">
-                  Skopiuj JSON z <strong>Ustawienia → Eksportuj profil</strong> i wklej poniżej.
-                </p>
-                <textarea
-                  value={importText}
-                  onChange={(e) => { setImportText(e.target.value); setImportError(""); }}
-                  rows={6}
-                  placeholder='{"name":"Jan","companyName":"...", ...}'
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-xs font-mono resize-none"
-                />
-                {importError && (
-                  <p className="text-xs text-red-500 mt-1">{importError}</p>
-                )}
-              </div>
+        {/* Google sign-in */}
+        <div className="w-full flex flex-col gap-3">
+          <button
+            onClick={() => signIn("google")}
+            className="w-full flex items-center justify-center gap-3 py-4 bg-white border-2 border-gray-200 rounded-2xl text-sm font-medium text-gray-700 hover:border-gray-300 hover:shadow-sm transition-all active:scale-95"
+          >
+            <Image
+              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+              alt="Google"
+              width={20}
+              height={20}
+              unoptimized
+            />
+            Zaloguj przez Google
+          </button>
 
-              <button
-                onClick={handleImport}
-                disabled={!importText.trim()}
-                className="w-full py-4 bg-[#1A1A2E] text-white rounded-2xl text-sm font-medium hover:bg-opacity-90 transition-all disabled:opacity-40"
-              >
-                przywróć profil
-              </button>
-
-              <button
-                onClick={() => { setShowImport(false); setImportText(""); setImportError(""); }}
-                className="w-full py-3 text-gray-400 text-sm"
-              >
-                ← wróć
-              </button>
-            </div>
-          </>
-        )}
+          <p className="text-xs text-gray-400 text-center">
+            Twoje dane (API keys, rozmowy) są przechowywane lokalnie w tej przeglądarce.
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,14 +1,25 @@
 import type { AppStorage, Conversation, Folder, UserProfile } from "@/types";
 
-const STORAGE_KEY = "cofunder_app_v1";
+const BASE_KEY = "cofunder_app_v1";
 const CURRENT_VERSION = 1;
+
+// Per-user key — set on login via initStorageUser()
+let _userSuffix = "";
+
+export function initStorageUser(userId: string): void {
+  _userSuffix = "_" + userId.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 40);
+}
+
+function storageKey(): string {
+  return `${BASE_KEY}${_userSuffix}`;
+}
 
 function getStorage(): AppStorage {
   if (typeof window === "undefined") {
     return { version: CURRENT_VERSION, userProfile: null, conversations: {}, customFolders: [] };
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (!raw) return { version: CURRENT_VERSION, userProfile: null, conversations: {}, customFolders: [] };
     return JSON.parse(raw) as AppStorage;
   } catch {
@@ -18,7 +29,7 @@ function getStorage(): AppStorage {
 
 function setStorage(data: AppStorage): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(storageKey(), JSON.stringify(data));
 }
 
 // User Profile
@@ -89,7 +100,7 @@ export function deleteCustomFolder(slug: string): void {
 // Reset
 export function resetAllData(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(storageKey());
 }
 
 export function resetConversations(): void {

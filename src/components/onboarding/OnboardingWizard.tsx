@@ -15,11 +15,11 @@ import ReadySlide from "./ReadySlide";
 
 const TOTAL_STEPS = 18;
 
-export default function OnboardingWizard() {
+export default function OnboardingWizard({ defaultName = "" }: { defaultName?: string }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
 
-  const [name, setName] = useState("");
+  const [name, setName] = useState(defaultName);
   const [companyName, setCompanyName] = useState("");
   const [age, setAge] = useState("");
   const [stage, setStage] = useState("");
