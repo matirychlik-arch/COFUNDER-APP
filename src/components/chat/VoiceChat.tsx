@@ -222,7 +222,7 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
         {/* Live transcript — visible while listening AND while thinking (Whisper returns after stop) */}
         {(isListening || voiceState === "thinking") && liveTranscript && (
           <p className="text-sm text-gray-500 text-center max-w-xs animate-fade-in italic">
-            „{liveTranscript}"
+            &bdquo;{liveTranscript}&rdquo;
           </p>
         )}
 
