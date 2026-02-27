@@ -51,7 +51,7 @@ export function useVoice({
     setVoiceState("listening");
 
     // Try Whisper first (server-side key); fall back to Web Speech API if unsupported
-    if (typeof window !== "undefined" && navigator.mediaDevices?.getUserMedia) {
+    if (typeof window !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function") {
       const rec = createWhisperRecorder(
         (transcript) => {
           setLiveTranscript(transcript);
