@@ -158,10 +158,10 @@ export default function TextChat({ conversation, profile, onVoiceMode }: TextCha
       {/* Input */}
       <ChatInput
         onSend={handleSend}
-        onVoiceMode={profile.elevenLabsApiKey ? onVoiceMode : undefined}
+        onVoiceMode={onVoiceMode}
         isStreaming={isStreaming}
         onStop={abort}
-        hasElevenLabsKey={!!profile.elevenLabsApiKey}
+        hasElevenLabsKey={true}
       />
 
       {/* Recap modal */}

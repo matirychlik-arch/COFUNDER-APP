@@ -5,8 +5,8 @@ export type UserGender = 'male' | 'female' | 'other' | 'prefer_not';
 export type FounVoice = 'female' | 'male';
 
 export const FOUN_VOICES = {
-  female: { id: 'lcMyyd2HUfFzxdCaC4Ta', name: 'Zosia' },
-  male:   { id: 'EOVAuWqgSZN2Oel78Psj', name: 'Adam' },
+  female: { id: '21m00Tcm4TlvDq8ikWAM', name: 'Zosia' },
+  male:   { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam' },
 } as const;
 
 export interface UserProfile {
@@ -21,15 +21,18 @@ export interface UserProfile {
   visionerMode: boolean;
   gender: UserGender;
   targetMarket: string;
-  // AI keys
-  deepseekApiKey: string;       // primary model (required)
-  anthropicApiKey?: string;     // creative mode + Visioner (optional)
-  openAiApiKey?: string;        // Whisper STT (optional, fallback to Web Speech API)
-  elevenLabsApiKey?: string;    // ElevenLabs TTS (optional)
   // Voice
   founVoice: FounVoice;         // 'female' (Zosia) | 'male' (Adam)
   theme: 'light' | 'dark';
   onboardingCompleted: boolean;
+  createdAt: string;
+}
+
+// Project metadata stored in global storage
+export interface ProjectMeta {
+  id: string;
+  name: string;       // user name
+  company: string;    // company name
   createdAt: string;
 }
 

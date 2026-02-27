@@ -7,23 +7,26 @@ export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
+    // API keys come from server environment — never from the client
+    const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+
+    if (!deepseekApiKey && !anthropicApiKey) {
+      return NextResponse.json(
+        { error: "Brak klucza API — ustaw DEEPSEEK_API_KEY lub ANTHROPIC_API_KEY w Vercel." },
+        { status: 500 }
+      );
+    }
+
     const {
       messages,
       profile,
       folderLabel,
-      deepseekApiKey,
-      anthropicApiKey,
     }: {
       messages: { role: string; content: string }[];
       profile: UserProfile;
       folderLabel: string;
-      deepseekApiKey?: string;
-      anthropicApiKey?: string;
     } = await req.json();
-
-    if (!deepseekApiKey && !anthropicApiKey) {
-      return NextResponse.json({ error: "Brak klucza API" }, { status: 401 });
-    }
 
     const prompt = buildRecapPrompt(messages, profile, folderLabel);
     let text = "";

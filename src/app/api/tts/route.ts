@@ -4,14 +4,17 @@ export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, voiceId, apiKey, stability, similarityBoost, style, speakerBoost } =
-      await req.json();
+    // API key comes from server environment — never from the client
+    const apiKey = process.env.ELEVENLABS_API_KEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "Brak klucza ElevenLabs API" }), {
-        status: 401,
+      return new Response(JSON.stringify({ error: "Brak klucza ElevenLabs API — ustaw ELEVENLABS_API_KEY w Vercel." }), {
+        status: 500,
       });
     }
+
+    const { text, voiceId, stability, similarityBoost, style, speakerBoost } =
+      await req.json();
 
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
@@ -23,11 +26,11 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify({
           text,
-          model_id: "eleven_v3",
+          model_id: "eleven_turbo_v2_5",
           voice_settings: {
-            stability: stability ?? 0.5,
-            similarity_boost: similarityBoost ?? 0.85,
-            style: style ?? 0.35,
+            stability: stability ?? 0.38,
+            similarity_boost: similarityBoost ?? 0.75,
+            style: style ?? 0.48,
             use_speaker_boost: speakerBoost ?? true,
           },
         }),
@@ -35,9 +38,11 @@ export async function POST(req: NextRequest) {
     );
 
     if (!response.ok) {
-      return new Response(JSON.stringify({ error: "ElevenLabs API error" }), {
-        status: response.status,
-      });
+      const errBody = await response.text().catch(() => "");
+      return new Response(
+        JSON.stringify({ error: `ElevenLabs ${response.status}`, detail: errBody }),
+        { status: response.status }
+      );
     }
 
     const audioBuffer = await response.arrayBuffer();

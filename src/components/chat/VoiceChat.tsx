@@ -9,6 +9,7 @@ import { buildSystemPrompt } from "@/lib/anthropic";
 import { generateId } from "@/lib/utils";
 import { useVoice } from "@/hooks/useVoice";
 import AvatarOrb from "./AvatarOrb";
+import VisionerToggle from "@/components/layout/VisionerToggle";
 import { X, Mic, MicOff, Repeat2, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ function AudioWaveform({ level, active }: { level: number; active: boolean }) {
 export default function VoiceChat({ conversation, profile, onClose }: VoiceChatProps) {
   const [messages, setMessages] = useState<Message[]>(conversation.messages);
   const [latestResponse, setLatestResponse] = useState("");
+  const [visionerMode, setVisionerMode] = useState(conversation.visionerModeActive);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const accumulatedRef = useRef("");
@@ -62,13 +64,21 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
   const folderLabel = folder?.label ?? conversation.folderSlug;
   const founName = FOUN_VOICES[profile.founVoice ?? "male"].name;
 
-  const { voiceState, liveTranscript, audioLevel, autoMode, isSupported, startListening, stopListening, speakText, abort, toggleAutoMode } = useVoice({
-    elevenLabsApiKey: profile.elevenLabsApiKey,
-    openAiApiKey: profile.openAiApiKey,
+  const { voiceState, liveTranscript, audioLevel, autoMode, isSupported, startListening, stopListening, abort, toggleAutoMode, startTTSStream, feedTTSChunk, endTTSStream } = useVoice({
     founVoice: profile.founVoice,
     onTranscript: handleTranscript,
     onError: (err) => setError(err),
   });
+
+  const toggleVisioner = () => {
+    const newVal = !visionerMode;
+    setVisionerMode(newVal);
+    const conv = getConversation(conversation.id);
+    if (conv) {
+      conv.visionerModeActive = newVal;
+      saveConversation(conv);
+    }
+  };
 
   async function handleTranscript(text: string) {
     const userMsg: Message = {
@@ -86,8 +96,11 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
     if (conv) { conv.messages = updatedMessages; saveConversation(conv); }
 
     try {
-      const systemPrompt = buildSystemPrompt(profile, folderLabel, conversation.visionerModeActive);
+      const systemPrompt = buildSystemPrompt(profile, folderLabel, visionerMode);
       const history = updatedMessages.map((m) => ({ role: m.role, content: m.content }));
+
+      // Start streaming TTS before the fetch so first sentence plays ASAP
+      startTTSStream();
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -95,9 +108,7 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
         body: JSON.stringify({
           messages: history,
           systemPrompt,
-          deepseekApiKey: profile.deepseekApiKey,
-          anthropicApiKey: profile.anthropicApiKey,
-          visionerMode: conversation.visionerModeActive,
+          visionerMode,
         }),
       });
 
@@ -111,10 +122,15 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          accumulatedRef.current += decoder.decode(value, { stream: true });
+          const chunk = decoder.decode(value, { stream: true });
+          accumulatedRef.current += chunk;
           setLatestResponse(accumulatedRef.current);
+          feedTTSChunk(chunk); // feed each chunk for sentence-by-sentence TTS
         }
       }
+
+      // Flush any remaining text and signal stream end
+      endTTSStream();
 
       const aiText = accumulatedRef.current;
       const aiMsg: Message = { id: generateId(), role: "assistant", content: aiText, createdAt: new Date().toISOString(), isVoice: true };
@@ -123,8 +139,6 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
 
       const conv2 = getConversation(conversation.id);
       if (conv2) { conv2.messages = withAI; saveConversation(conv2); }
-
-      await speakText(aiText);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Błąd");
     }
@@ -168,7 +182,9 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
           {folder && <span className="text-sm">{folder.emoji}</span>}
           <span className="text-sm text-gray-400">{folderLabel}</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* Wizjoner toggle — always visible in voice mode */}
+          <VisionerToggle enabled={visionerMode} onToggle={toggleVisioner} compact />
           <button
             onClick={handleFullscreen}
             className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors"
@@ -209,10 +225,10 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
           )}
         </div>
 
-        {/* Live transcript */}
-        {isListening && liveTranscript && (
-          <p className="text-sm text-gray-500 text-center max-w-xs animate-fade-in">
-            {liveTranscript}
+        {/* Live transcript — visible while listening AND while thinking (Whisper returns after stop) */}
+        {(isListening || voiceState === "thinking") && liveTranscript && (
+          <p className="text-sm text-gray-500 text-center max-w-xs animate-fade-in italic">
+            &bdquo;{liveTranscript}&rdquo;
           </p>
         )}
 
@@ -263,8 +279,8 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
             {isListening ? <MicOff size={28} /> : <Mic size={28} />}
           </button>
           <p className="text-xs text-gray-400">
-            {voiceState === "idle" && (profile.openAiApiKey ? "naciśnij i mów" : "naciśnij i mów")}
-            {isListening && (profile.openAiApiKey ? "naciśnij aby wysłać" : "naciśnij aby zatrzymać")}
+            {voiceState === "idle" && "naciśnij i mów"}
+            {isListening && "naciśnij aby wysłać"}
             {isSpeaking && `${founName} mówi — naciśnij aby zatrzymać`}
             {voiceState === "thinking" && "czekam na odpowiedź..."}
           </p>

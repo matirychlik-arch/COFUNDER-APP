@@ -131,20 +131,18 @@ async function streamClaude(
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
-    const {
-      messages,
-      systemPrompt,
-      deepseekApiKey,
-      anthropicApiKey,
-      visionerMode,
-    } = await req.json();
+    // API keys come from server environment — never from the client
+    const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 
     if (!deepseekApiKey) {
-      return new Response(JSON.stringify({ error: "Brak klucza DeepSeek API" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Brak klucza DeepSeek API — ustaw DEEPSEEK_API_KEY w zmiennych środowiskowych Vercel." }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
     }
+
+    const { messages, systemPrompt, visionerMode } = await req.json();
 
     const useClaudeForCreative =
       !!anthropicApiKey && isCreativeRequest(messages, !!visionerMode);

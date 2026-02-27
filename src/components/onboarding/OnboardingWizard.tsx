@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { UserProfile, FounVoice } from "@/types";
 import { FOUN_VOICES } from "@/types";
-import { saveUserProfile } from "@/lib/storage";
+import { saveUserProfile, addProject } from "@/lib/storage";
+import { generateId } from "@/lib/utils";
 import ProgressBar from "@/components/shared/ProgressBar";
 import BackButton from "@/components/shared/BackButton";
 import WelcomeSlide from "./WelcomeSlide";
@@ -13,7 +14,7 @@ import TextInputStep from "./TextInputStep";
 import FeatureSlide from "./FeatureSlide";
 import ReadySlide from "./ReadySlide";
 
-const TOTAL_STEPS = 18;
+const TOTAL_STEPS = 14;
 
 export default function OnboardingWizard() {
   const router = useRouter();
@@ -30,15 +31,12 @@ export default function OnboardingWizard() {
   const [gender, setGender] = useState("");
   const [targetMarket, setTargetMarket] = useState("");
   const [founVoice, setFoundVoice] = useState<FounVoice>("male");
-  const [deepseekKey, setDeepseekKey] = useState("");
-  const [anthropicKey, setAnthropicKey] = useState("");
-  const [openAiKey, setOpenAiKey] = useState("");
-  const [elevenLabsKey, setElevenLabsKey] = useState("");
 
   const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
   const back = () => setStep((s) => Math.max(s - 1, 0));
 
   const finish = () => {
+    const projectId = generateId();
     const profile: UserProfile = {
       name: name.trim() || "Założycielu",
       companyName: companyName.trim() || "moja firma",
@@ -52,15 +50,22 @@ export default function OnboardingWizard() {
       gender: gender as UserProfile["gender"],
       targetMarket: targetMarket.trim(),
       founVoice,
-      deepseekApiKey: deepseekKey.trim(),
-      anthropicApiKey: anthropicKey.trim() || undefined,
-      openAiApiKey: openAiKey.trim() || undefined,
-      elevenLabsApiKey: elevenLabsKey.trim() || undefined,
       theme: "light",
       onboardingCompleted: true,
       createdAt: new Date().toISOString(),
     };
+
+    // Register project in global list and set as active
+    addProject({
+      id: projectId,
+      name: profile.name,
+      company: profile.companyName,
+      createdAt: profile.createdAt,
+    });
+
+    // addProject sets it as active, so saveUserProfile will use this project
     saveUserProfile(profile);
+
     router.push("/chat");
   };
 
@@ -243,7 +248,6 @@ export default function OnboardingWizard() {
           />
         )}
 
-        {/* NEW: choose Foun's voice */}
         {step === 12 && (
           <QuestionStep
             question="jakim głosem ma mówić Foun?"
@@ -266,66 +270,7 @@ export default function OnboardingWizard() {
           />
         )}
 
-        {/* DeepSeek API key — required (primary model) */}
-        {step === 13 && (
-          <TextInputStep
-            question="klucz DeepSeek API"
-            subtitle="główny silnik Founa — tańszy i szybki. klucz przechowywany tylko na twoim urządzeniu."
-            value={deepseekKey}
-            onChange={setDeepseekKey}
-            onNext={() => setStep(14)}
-            type="password"
-            placeholder="sk-..."
-            hint="Pobierz klucz na platform.deepseek.com → API Keys."
-          />
-        )}
-
-        {/* Anthropic key — optional, for creative / Visioner mode */}
-        {step === 14 && (
-          <TextInputStep
-            question="klucz Anthropic API"
-            subtitle="dla kreatywnych rozmów i trybu Wizjonera — opcjonalne, możesz pominąć"
-            value={anthropicKey}
-            onChange={setAnthropicKey}
-            onNext={() => setStep(15)}
-            type="password"
-            placeholder="sk-ant-... (opcjonalne)"
-            required={false}
-            hint="Pobierz klucz na console.anthropic.com → API Keys."
-          />
-        )}
-
-        {/* OpenAI key — for Whisper STT */}
-        {step === 15 && (
-          <TextInputStep
-            question="klucz OpenAI API"
-            subtitle="do lepszego rozpoznawania mowy (Whisper) — opcjonalne, pomiń jeśli nie chcesz trybu głosowego"
-            value={openAiKey}
-            onChange={setOpenAiKey}
-            onNext={() => setStep(16)}
-            type="password"
-            placeholder="sk-... (opcjonalne)"
-            required={false}
-            hint="Pobierz klucz na platform.openai.com → API Keys."
-          />
-        )}
-
-        {/* ElevenLabs key — for TTS voice */}
-        {step === 16 && (
-          <TextInputStep
-            question="klucz ElevenLabs API"
-            subtitle={`do głosu Founa — Foun mówi głosem ${FOUN_VOICES[founVoice].name}. możesz to pominąć.`}
-            value={elevenLabsKey}
-            onChange={setElevenLabsKey}
-            onNext={() => setStep(17)}
-            type="password"
-            placeholder="opcjonalne — pomiń jeśli chcesz tylko tekstowo"
-            required={false}
-            hint="Pobierz klucz na elevenlabs.io → Profile → API Key."
-          />
-        )}
-
-        {step === 17 && <ReadySlide name={name || "Założycielu"} onStart={finish} />}
+        {step === 13 && <ReadySlide name={name || "Założycielu"} onStart={finish} />}
       </div>
     </div>
   );

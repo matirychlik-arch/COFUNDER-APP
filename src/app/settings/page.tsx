@@ -2,26 +2,41 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { UserProfile } from "@/types";
-import { getUserProfile, updateUserProfile, resetConversations, resetAllData } from "@/lib/storage";
-import { Eye, EyeOff, AlertTriangle, CheckCircle } from "lucide-react";
+import type { UserProfile, ProjectMeta } from "@/types";
+import {
+  getUserProfile,
+  updateUserProfile,
+  resetConversations,
+  resetAllData,
+  getActiveProjectId,
+  getAllProjects,
+  setActiveProject,
+  deleteProject,
+  updateProjectMeta,
+} from "@/lib/storage";
+import { AlertTriangle, CheckCircle, Download, FolderOpen, Plus, Trash2 } from "lucide-react";
 import AppSidebar from "@/components/layout/AppSidebar";
 import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [showDeepseekKey, setShowDeepseekKey] = useState(false);
-  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
-  const [showOpenAiKey, setShowOpenAiKey] = useState(false);
-  const [showElevenKey, setShowElevenKey] = useState(false);
+  const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [confirmReset, setConfirmReset] = useState<"conversations" | "account" | null>(null);
+  const [confirmReset, setConfirmReset] = useState<"conversations" | "project" | null>(null);
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState<string | null>(null);
 
   useEffect(() => {
+    const projectId = getActiveProjectId();
+    if (!projectId) { router.replace("/"); return; }
+
     const p = getUserProfile();
     if (!p) { router.replace("/onboarding"); return; }
+
     setProfile(p);
+    setActiveId(projectId);
+    setProjects(getAllProjects());
   }, [router]);
 
   const update = (field: keyof UserProfile, value: string | boolean) => {
@@ -31,6 +46,11 @@ export default function SettingsPage() {
   const save = () => {
     if (!profile) return;
     updateUserProfile(profile);
+    // Keep project meta in sync with profile name/company
+    if (activeId) {
+      updateProjectMeta(activeId, { name: profile.name, company: profile.companyName });
+      setProjects(getAllProjects());
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -41,9 +61,32 @@ export default function SettingsPage() {
     alert("Historia rozmów wyczyszczona.");
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteCurrentProject = () => {
     resetAllData();
-    router.replace("/onboarding");
+    router.replace("/");
+  };
+
+  const handleSwitchProject = (id: string) => {
+    setActiveProject(id);
+    router.push("/chat");
+  };
+
+  const handleDeleteOtherProject = (id: string) => {
+    deleteProject(id);
+    setProjects(getAllProjects());
+    setConfirmDeleteProject(null);
+  };
+
+  const handleExportProfile = () => {
+    if (!profile) return;
+    const json = JSON.stringify(profile, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `foun-profil-${profile.name.toLowerCase().replace(/\s+/g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (!profile) return null;
@@ -117,87 +160,6 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          {/* API Keys */}
-          <section className="space-y-4">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">klucze API</h2>
-
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">
-                DeepSeek API Key <span className="text-red-400">*wymagany</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showDeepseekKey ? "text" : "password"}
-                  value={profile.deepseekApiKey ?? ""}
-                  onChange={(e) => update("deepseekApiKey", e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-sm font-mono"
-                />
-                <button onClick={() => setShowDeepseekKey(!showDeepseekKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  {showDeepseekKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">platform.deepseek.com — główny model AI</p>
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">
-                Anthropic API Key <span className="text-gray-400">opcjonalny (kreatywne + Wizjoner)</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showAnthropicKey ? "text" : "password"}
-                  value={profile.anthropicApiKey ?? ""}
-                  onChange={(e) => update("anthropicApiKey", e.target.value)}
-                  placeholder="sk-ant-..."
-                  className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-sm font-mono"
-                />
-                <button onClick={() => setShowAnthropicKey(!showAnthropicKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  {showAnthropicKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">console.anthropic.com — Claude Sonnet dla brainstormingu</p>
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">
-                OpenAI API Key <span className="text-gray-400">opcjonalny (Whisper — lepsze rozumienie mowy)</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showOpenAiKey ? "text" : "password"}
-                  value={profile.openAiApiKey ?? ""}
-                  onChange={(e) => update("openAiApiKey", e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-sm font-mono"
-                />
-                <button onClick={() => setShowOpenAiKey(!showOpenAiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  {showOpenAiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">platform.openai.com — Whisper rozumie polski lepiej</p>
-            </div>
-
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">
-                ElevenLabs API Key <span className="text-gray-400">opcjonalny (głos Founa)</span>
-              </label>
-              <div className="relative">
-                <input
-                  type={showElevenKey ? "text" : "password"}
-                  value={profile.elevenLabsApiKey ?? ""}
-                  onChange={(e) => update("elevenLabsApiKey", e.target.value)}
-                  placeholder="..."
-                  className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-sm font-mono"
-                />
-                <button onClick={() => setShowElevenKey(!showElevenKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  {showElevenKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 mt-1">elevenlabs.io — głos Zosia lub Adam (eleven_v3)</p>
-            </div>
-          </section>
-
           {/* Save button */}
           <button
             onClick={save}
@@ -218,6 +180,101 @@ export default function SettingsPage() {
             )}
           </button>
 
+          {/* Projects */}
+          <section className="space-y-4 border-t border-gray-100 pt-6">
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
+              <FolderOpen size={14} />
+              projekty
+            </h2>
+
+            <div className="space-y-2">
+              {projects.map((project) => {
+                const isActive = project.id === activeId;
+                return (
+                  <div
+                    key={project.id}
+                    className={cn(
+                      "flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all",
+                      isActive
+                        ? "border-[#F5A623] bg-amber-50"
+                        : "border-gray-100 bg-gray-50"
+                    )}
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-[#1A1A2E]">{project.company}</p>
+                      <p className="text-xs text-gray-400">{project.name}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isActive ? (
+                        <span className="text-xs text-[#F5A623] font-medium">aktywny</span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleSwitchProject(project.id)}
+                            className="text-xs text-gray-500 hover:text-[#1A1A2E] px-2 py-1 rounded-lg hover:bg-white transition-colors"
+                          >
+                            przełącz
+                          </button>
+                          {confirmDeleteProject === project.id ? (
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => setConfirmDeleteProject(null)}
+                                className="text-xs text-gray-400 px-2 py-1 rounded-lg"
+                              >
+                                anuluj
+                              </button>
+                              <button
+                                onClick={() => handleDeleteOtherProject(project.id)}
+                                className="text-xs text-red-500 px-2 py-1 rounded-lg hover:bg-red-50"
+                              >
+                                usuń
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteProject(project.id)}
+                              className="text-gray-300 hover:text-red-400 transition-colors p-1"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => router.push("/onboarding")}
+              className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 hover:border-[#F5A623] hover:text-[#F5A623] transition-all"
+            >
+              <Plus size={14} />
+              nowy projekt
+            </button>
+          </section>
+
+          {/* Export profile */}
+          <section className="space-y-3 border-t border-gray-100 pt-6">
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">backup danych</h2>
+            <div className="p-4 border-2 border-gray-100 rounded-xl flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-[#1A1A2E]">eksportuj profil</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Pobierz JSON z ustawieniami projektu. Przydatne przy migracji danych.
+                </p>
+              </div>
+              <button
+                onClick={handleExportProfile}
+                className="flex items-center gap-2 px-3 py-2 border-2 border-gray-200 text-gray-600 rounded-xl text-xs font-medium hover:border-gray-300 transition-colors flex-shrink-0"
+              >
+                <Download size={14} />
+                pobierz
+              </button>
+            </div>
+          </section>
+
           {/* Danger zone */}
           <section className="space-y-3 border-t border-gray-100 pt-6">
             <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wide flex items-center gap-2">
@@ -229,59 +286,33 @@ export default function SettingsPage() {
               <div className="p-4 border-2 border-red-100 rounded-xl">
                 <p className="text-sm font-medium text-[#1A1A2E]">wyczyść historię rozmów</p>
                 <p className="text-xs text-gray-400 mt-0.5 mb-3">
-                  usuwa wszystkie rozmowy z Founem. Nie można cofnąć.
+                  usuwa wszystkie rozmowy z tego projektu. Nie można cofnąć.
                 </p>
                 {confirmReset === "conversations" ? (
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setConfirmReset(null)}
-                      className="flex-1 py-2 border-2 border-gray-200 rounded-xl text-xs text-gray-600"
-                    >
-                      anuluj
-                    </button>
-                    <button
-                      onClick={handleResetConversations}
-                      className="flex-1 py-2 bg-red-500 text-white rounded-xl text-xs font-medium"
-                    >
-                      tak, usuń
-                    </button>
+                    <button onClick={() => setConfirmReset(null)} className="flex-1 py-2 border-2 border-gray-200 rounded-xl text-xs text-gray-600">anuluj</button>
+                    <button onClick={handleResetConversations} className="flex-1 py-2 bg-red-500 text-white rounded-xl text-xs font-medium">tak, usuń</button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setConfirmReset("conversations")}
-                    className="py-2 px-4 border-2 border-red-200 text-red-500 rounded-xl text-xs hover:bg-red-50 transition-colors"
-                  >
+                  <button onClick={() => setConfirmReset("conversations")} className="py-2 px-4 border-2 border-red-200 text-red-500 rounded-xl text-xs hover:bg-red-50 transition-colors">
                     wyczyść historię
                   </button>
                 )}
               </div>
 
               <div className="p-4 border-2 border-red-100 rounded-xl">
-                <p className="text-sm font-medium text-[#1A1A2E]">usuń wszystkie dane</p>
+                <p className="text-sm font-medium text-[#1A1A2E]">usuń ten projekt</p>
                 <p className="text-xs text-gray-400 mt-0.5 mb-3">
-                  resetuje aplikację — profil, rozmowy, wszystko. Wróci do onboardingu.
+                  usuwa profil, rozmowy i dane tego projektu. Nie można cofnąć.
                 </p>
-                {confirmReset === "account" ? (
+                {confirmReset === "project" ? (
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => setConfirmReset(null)}
-                      className="flex-1 py-2 border-2 border-gray-200 rounded-xl text-xs text-gray-600"
-                    >
-                      anuluj
-                    </button>
-                    <button
-                      onClick={handleDeleteAccount}
-                      className="flex-1 py-2 bg-red-500 text-white rounded-xl text-xs font-medium"
-                    >
-                      tak, usuń wszystko
-                    </button>
+                    <button onClick={() => setConfirmReset(null)} className="flex-1 py-2 border-2 border-gray-200 rounded-xl text-xs text-gray-600">anuluj</button>
+                    <button onClick={handleDeleteCurrentProject} className="flex-1 py-2 bg-red-500 text-white rounded-xl text-xs font-medium">tak, usuń projekt</button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setConfirmReset("account")}
-                    className="py-2 px-4 bg-red-500 text-white rounded-xl text-xs font-medium hover:bg-red-600 transition-colors"
-                  >
-                    usuń wszystkie dane
+                  <button onClick={() => setConfirmReset("project")} className="py-2 px-4 bg-red-500 text-white rounded-xl text-xs font-medium hover:bg-red-600 transition-colors">
+                    usuń projekt
                   </button>
                 )}
               </div>

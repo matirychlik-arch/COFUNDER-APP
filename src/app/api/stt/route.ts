@@ -5,16 +5,18 @@ export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const audio = formData.get("audio") as Blob | null;
-    const apiKey = formData.get("apiKey") as string | null;
+    // API key comes from server environment — never from the client
+    const apiKey = process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "Brak klucza OpenAI API" }), {
-        status: 401,
+      return new Response(JSON.stringify({ error: "Brak klucza OpenAI API — ustaw OPENAI_API_KEY w Vercel." }), {
+        status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    const formData = await req.formData();
+    const audio = formData.get("audio") as Blob | null;
 
     if (!audio) {
       return new Response(JSON.stringify({ error: "Brak pliku audio" }), {
