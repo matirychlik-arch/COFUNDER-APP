@@ -1,10 +1,14 @@
 // ElevenLabs TTS integration
-// Voice model: eleven_multilingual_v2 (supports Polish)
-// Default voice: "Foun" - we use a warm, energetic male Polish-capable voice
-// Users can override with their own voice ID in settings
+// Model: eleven_v3 (highest quality, supports Polish)
+// Voices: Zosia (female) lcMyyd2HUfFzxdCaC4Ta | Adam (male) EOVAuWqgSZN2Oel78Psj
 
-export const DEFAULT_VOICE_ID = "pNInz6obpgDQGcFmaJgB"; // Adam - clear, natural English/multilingual
-export const TTS_MODEL = "eleven_multilingual_v2";
+import { FOUN_VOICES, type FounVoice } from "@/types";
+
+export const TTS_MODEL = "eleven_v3";
+
+export function getVoiceId(founVoice: FounVoice | undefined): string {
+  return FOUN_VOICES[founVoice ?? "male"].id;
+}
 
 export interface TTSOptions {
   voiceId?: string;
@@ -20,10 +24,10 @@ export async function fetchTTS(
   options: TTSOptions = {}
 ): Promise<ArrayBuffer | null> {
   const {
-    voiceId = DEFAULT_VOICE_ID,
-    stability = 0.6,
-    similarityBoost = 0.8,
-    style = 0.3,
+    voiceId = FOUN_VOICES.male.id,
+    stability = 0.5,
+    similarityBoost = 0.85,
+    style = 0.35,
     speakerBoost = true,
   } = options;
 
@@ -91,7 +95,6 @@ export function speakWithBrowser(text: string, onEnd?: () => void): void {
   utterance.rate = 1.1;
   utterance.pitch = 1.0;
 
-  // Prefer Polish voice if available
   const voices = window.speechSynthesis.getVoices();
   const polishVoice = voices.find((v) => v.lang.startsWith("pl"));
   if (polishVoice) utterance.voice = polishVoice;
