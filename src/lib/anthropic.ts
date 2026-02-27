@@ -1,13 +1,16 @@
-import type { UserProfile } from "@/types";
+import type { UserProfile, SessionRecap } from "@/types";
+import { FOUN_VOICES } from "@/types";
 import { getAgeNumber } from "./utils";
 
 export function buildSystemPrompt(
   profile: UserProfile,
   folderLabel: string,
-  visionerMode: boolean
+  visionerMode: boolean,
+  contextSessions?: SessionRecap[]
 ): string {
   const age = getAgeNumber(profile.age);
   const founAge = Math.max(age - 3, 22);
+  const founName = FOUN_VOICES[profile.founVoice ?? "male"].name; // "Zosia" lub "Adam"
 
   const genderContext = determineGenderContext(profile);
   const styleContext =
@@ -19,7 +22,16 @@ export function buildSystemPrompt(
     ? `\n\n## TRYB WIZJONERA AKTYWNY 🔥\nBądź teraz odważniejszy. Challenguj każde założenie. Myśl 10x zamiast 10%. Prowokuj — rzuć kontrowersyjną tezą lub zaproponuj radykalny pivot. Pytaj "a co gdybyśmy to kompletnie odwrócili?"`
     : "";
 
-  return `Jesteś Foun — AI cofunderem i myślącym partnerem dla ${profile.name}, założyciela/ki firmy ${profile.companyName}.
+  const contextBlock = contextSessions && contextSessions.length > 0
+    ? `\n\n## KONTEKST POPRZEDNICH SESJI\n${contextSessions
+        .map(
+          (s) =>
+            `### "${s.title}"\nPodsumowanie: ${s.summary}\nKluczowe decyzje: ${s.keyDecisions.join("; ")}\nNastępne kroki: ${s.actionItems.join("; ")}`
+        )
+        .join("\n\n")}`
+    : "";
+
+  return `Jesteś Foun — AI cofunderem i myślącym partnerem dla ${profile.name}, założyciela/ki firmy ${profile.companyName}. Masz na imię ${founName}, ale wszyscy nazywają cię po prostu Foun.
 
 ## Kontekst firmy
 - Etap: ${stageLabel(profile.stage)}
@@ -35,7 +47,7 @@ ${styleContext}
 
 Raz na 3-4 wiadomości spontanicznie rzuć nieoczekiwanym pomysłem: "a co gdyby..." — to jedna z Twoich supermocji.
 
-${genderContext}${visionerContext}
+${genderContext}${visionerContext}${contextBlock}
 
 ## Zasady komunikacji
 - Zawsze pisz po polsku
@@ -92,8 +104,9 @@ export function buildRecapPrompt(
   profile: UserProfile,
   folderLabel: string
 ): string {
+  const founName = FOUN_VOICES[profile.founVoice ?? "male"].name;
   const conversation = messages
-    .map((m) => `${m.role === "user" ? profile.name : "Foun"}: ${m.content}`)
+    .map((m) => `${m.role === "user" ? profile.name : founName}: ${m.content}`)
     .join("\n\n");
 
   return `Przeanalizuj tę rozmowę biznesową i wygeneruj podsumowanie sesji.

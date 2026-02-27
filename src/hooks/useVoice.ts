@@ -1,13 +1,22 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { createSpeechRecognition, isSpeechRecognitionSupported, type SpeechRecognitionInstance } from "@/lib/speech";
-import { fetchTTS, playAudio, stopAudio, speakWithBrowser, DEFAULT_VOICE_ID } from "@/lib/elevenlabs";
+import {
+  createWhisperRecorder,
+  createSpeechRecognition,
+  isSpeechRecognitionSupported,
+  type WhisperRecorderInstance,
+  type SpeechRecognitionInstance,
+} from "@/lib/speech";
+import { fetchTTS, playAudio, stopAudio, speakWithBrowser, getVoiceId } from "@/lib/elevenlabs";
+import type { FounVoice } from "@/types";
 
 export type VoiceState = "idle" | "listening" | "thinking" | "speaking";
 
 interface UseVoiceOptions {
   elevenLabsApiKey?: string;
+  openAiApiKey?: string;
+  founVoice?: FounVoice;
   onTranscript: (text: string) => void;
   onSpeak?: (text: string) => void;
   onError?: (err: string) => void;
@@ -15,55 +24,90 @@ interface UseVoiceOptions {
 
 export function useVoice({
   elevenLabsApiKey,
+  openAiApiKey,
+  founVoice,
   onTranscript,
   onSpeak,
   onError,
 }: UseVoiceOptions) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [liveTranscript, setLiveTranscript] = useState("");
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [autoMode, setAutoMode] = useState(false);
 
-  const isSupported = isSpeechRecognitionSupported();
+  const whisperRef = useRef<WhisperRecorderInstance | null>(null);
+  const legacyRef = useRef<SpeechRecognitionInstance | null>(null);
+  const interimRef = useRef("");
+  const autoModeRef = useRef(false);
+
+  const toggleAutoMode = useCallback(() => {
+    autoModeRef.current = !autoModeRef.current;
+    setAutoMode(autoModeRef.current);
+  }, []);
+
+  const isSupported = !!openAiApiKey || isSpeechRecognitionSupported();
 
   const startListening = useCallback(() => {
-    if (!isSupported) {
-      onError?.("Twoja przeglądarka nie obsługuje rozpoznawania mowy. Użyj Chrome lub Edge.");
-      return;
-    }
-
     setLiveTranscript("");
+    interimRef.current = "";
+    setAudioLevel(0);
     setVoiceState("listening");
 
-    const rec = createSpeechRecognition(
-      (transcript, isFinal) => {
-        setLiveTranscript(transcript);
-        if (isFinal) {
-          recognitionRef.current?.stop();
-        }
-      },
-      () => {
-        // Recognition ended
-        const finalText = liveTranscript;
-        if (finalText.trim()) {
+    if (openAiApiKey) {
+      const rec = createWhisperRecorder(
+        openAiApiKey,
+        (transcript) => {
+          setLiveTranscript(transcript);
           setVoiceState("thinking");
-          onTranscript(finalText);
+          onTranscript(transcript);
           setLiveTranscript("");
-        } else {
+        },
+        () => {
+          setVoiceState((s) => (s === "listening" ? "idle" : s));
+          setAudioLevel(0);
+        },
+        (err) => {
           setVoiceState("idle");
+          setAudioLevel(0);
+          onError?.(err);
+        },
+        (level) => setAudioLevel(level)
+      );
+      whisperRef.current = rec;
+      rec?.start();
+    } else {
+      const rec = createSpeechRecognition(
+        (transcript, isFinal) => {
+          setLiveTranscript(transcript);
+          interimRef.current = transcript;
+          if (isFinal) {
+            legacyRef.current?.stop();
+          }
+        },
+        () => {
+          const finalText = interimRef.current;
+          if (finalText.trim()) {
+            setVoiceState("thinking");
+            onTranscript(finalText);
+            setLiveTranscript("");
+            interimRef.current = "";
+          } else {
+            setVoiceState("idle");
+          }
+        },
+        (err) => {
+          setVoiceState("idle");
+          onError?.(err);
         }
-      },
-      (err) => {
-        setVoiceState("idle");
-        onError?.(err);
-      }
-    );
-
-    recognitionRef.current = rec;
-    rec?.start();
-  }, [isSupported, onTranscript, onError, liveTranscript]);
+      );
+      legacyRef.current = rec;
+      rec?.start();
+    }
+  }, [openAiApiKey, onTranscript, onError]);
 
   const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
+    whisperRef.current?.stop();
+    legacyRef.current?.stop();
   }, []);
 
   const speakText = useCallback(
@@ -71,38 +115,49 @@ export function useVoice({
       setVoiceState("speaking");
       onSpeak?.(text);
 
-      const done = () => setVoiceState("idle");
+      const voiceId = getVoiceId(founVoice);
+
+      const done = () => {
+        if (autoModeRef.current) {
+          setTimeout(() => startListening(), 400);
+        } else {
+          setVoiceState("idle");
+        }
+      };
 
       if (elevenLabsApiKey) {
-        const buffer = await fetchTTS(text, elevenLabsApiKey, {
-          voiceId: DEFAULT_VOICE_ID,
-        });
+        const buffer = await fetchTTS(text, elevenLabsApiKey, { voiceId });
         if (buffer) {
           playAudio(buffer, done);
           return;
         }
       }
 
-      // Fallback to browser TTS
       speakWithBrowser(text, done);
     },
-    [elevenLabsApiKey, onSpeak]
+    [elevenLabsApiKey, founVoice, onSpeak, startListening]
   );
 
   const abort = useCallback(() => {
-    recognitionRef.current?.abort();
+    whisperRef.current?.abort();
+    legacyRef.current?.abort();
     stopAudio();
     setVoiceState("idle");
     setLiveTranscript("");
+    setAudioLevel(0);
+    interimRef.current = "";
   }, []);
 
   return {
     voiceState,
     liveTranscript,
+    audioLevel,
+    autoMode,
     isSupported,
     startListening,
     stopListening,
     speakText,
     abort,
+    toggleAutoMode,
   };
 }

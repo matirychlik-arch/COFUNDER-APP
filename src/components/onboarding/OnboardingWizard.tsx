@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { UserProfile } from "@/types";
+import type { UserProfile, FounVoice } from "@/types";
+import { FOUN_VOICES } from "@/types";
 import { saveUserProfile } from "@/lib/storage";
 import ProgressBar from "@/components/shared/ProgressBar";
 import BackButton from "@/components/shared/BackButton";
@@ -12,7 +13,7 @@ import TextInputStep from "./TextInputStep";
 import FeatureSlide from "./FeatureSlide";
 import ReadySlide from "./ReadySlide";
 
-const TOTAL_STEPS = 15;
+const TOTAL_STEPS = 18;
 
 export default function OnboardingWizard() {
   const router = useRouter();
@@ -28,7 +29,10 @@ export default function OnboardingWizard() {
   const [commStyle, setCommStyle] = useState("");
   const [gender, setGender] = useState("");
   const [targetMarket, setTargetMarket] = useState("");
+  const [founVoice, setFoundVoice] = useState<FounVoice>("male");
+  const [deepseekKey, setDeepseekKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
+  const [openAiKey, setOpenAiKey] = useState("");
   const [elevenLabsKey, setElevenLabsKey] = useState("");
 
   const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
@@ -47,7 +51,10 @@ export default function OnboardingWizard() {
       visionerMode: false,
       gender: gender as UserProfile["gender"],
       targetMarket: targetMarket.trim(),
-      anthropicApiKey: anthropicKey.trim(),
+      founVoice,
+      deepseekApiKey: deepseekKey.trim(),
+      anthropicApiKey: anthropicKey.trim() || undefined,
+      openAiApiKey: openAiKey.trim() || undefined,
       elevenLabsApiKey: elevenLabsKey.trim() || undefined,
       theme: "light",
       onboardingCompleted: true,
@@ -57,12 +64,10 @@ export default function OnboardingWizard() {
     router.push("/chat");
   };
 
-  // Show progress bar for steps 1-11 (not welcome or ready)
   const showProgress = step > 0 && step < TOTAL_STEPS - 1;
 
   return (
     <div className="relative bg-white min-h-screen">
-      {/* Header */}
       {showProgress && (
         <div className="fixed top-0 left-0 right-0 z-10 bg-white px-8 py-4 flex items-center gap-4">
           <BackButton onClick={back} />
@@ -70,7 +75,6 @@ export default function OnboardingWizard() {
         </div>
       )}
 
-      {/* Content with padding for header */}
       <div className={showProgress ? "pt-16" : ""}>
         {step === 0 && <WelcomeSlide onNext={next} />}
 
@@ -156,26 +160,10 @@ export default function OnboardingWizard() {
             title="poznaj Founa"
             subtitle="twojego AI cofoundera"
             features={[
-              {
-                icon: "🧠",
-                title: "pamięta twój kontekst",
-                description: "uczy się twojej firmy i łączy kropki między sesjami",
-              },
-              {
-                icon: "🎯",
-                title: "zawsze konkretny",
-                description: "żadnych ogólnych rad — wszystko pod twój startup",
-              },
-              {
-                icon: "🔥",
-                title: "rzuca szalonymi pomysłami",
-                description: "czasem to właśnie nieoczywisty pomysł otwiera nowe drzwi",
-              },
-              {
-                icon: "🗂️",
-                title: "sesje w folderach",
-                description: "każda rozmowa zapisana, sortowana, gotowa do powrotu",
-              },
+              { icon: "🧠", title: "pamięta twój kontekst", description: "uczy się twojej firmy i łączy kropki między sesjami" },
+              { icon: "🎯", title: "zawsze konkretny", description: "żadnych ogólnych rad — wszystko pod twój startup" },
+              { icon: "🔥", title: "rzuca szalonymi pomysłami", description: "czasem to właśnie nieoczywisty pomysł otwiera nowe drzwi" },
+              { icon: "🎙️", title: "rozmawia głosem", description: "gadaj z Founem jak ze współzałożycielem — bez klawiaturki" },
             ]}
             onNext={next}
             continueLabel="super, dalej"
@@ -218,16 +206,8 @@ export default function OnboardingWizard() {
           <QuestionStep
             question="jak lubisz gadać?"
             options={[
-              {
-                value: "casual",
-                label: "jak z kumplem",
-                description: "bezpośrednio, po ludzku, bez korporacyjnego BS",
-              },
-              {
-                value: "structured",
-                label: "jak z konsultantem",
-                description: "strukturalnie, frameworki, dane i liczby",
-              },
+              { value: "casual", label: "jak z kumplem", description: "bezpośrednio, po ludzku, bez korporacyjnego BS" },
+              { value: "structured", label: "jak z konsultantem", description: "strukturalnie, frameworki, dane i liczby" },
             ]}
             selected={commStyle}
             onSelect={(v) => setCommStyle(v as string)}
@@ -263,26 +243,81 @@ export default function OnboardingWizard() {
           />
         )}
 
+        {/* NEW: choose Foun's voice */}
         {step === 12 && (
-          <TextInputStep
-            question="klucz Anthropic API"
-            subtitle="twoje rozmowy z Founem. klucz jest przechowywany tylko na twoim urządzeniu."
-            value={anthropicKey}
-            onChange={setAnthropicKey}
-            onNext={() => setStep(13)}
-            type="password"
-            placeholder="sk-ant-..."
-            hint="Pobierz klucz na console.anthropic.com → API Keys. Twoje dane nie trafiają na nasze serwery."
+          <QuestionStep
+            question="jakim głosem ma mówić Foun?"
+            subtitle="wybierz głos swojego AI cofoundera"
+            options={[
+              {
+                value: "male",
+                label: `Adam — ${FOUN_VOICES.male.name}`,
+                description: "energetyczny, pewny siebie",
+              },
+              {
+                value: "female",
+                label: `Zosia — ${FOUN_VOICES.female.name}`,
+                description: "ciepła, entuzjastyczna",
+              },
+            ]}
+            selected={founVoice}
+            onSelect={(v) => setFoundVoice(v as FounVoice)}
+            onNext={next}
           />
         )}
 
+        {/* DeepSeek API key — required (primary model) */}
         {step === 13 && (
           <TextInputStep
+            question="klucz DeepSeek API"
+            subtitle="główny silnik Founa — tańszy i szybki. klucz przechowywany tylko na twoim urządzeniu."
+            value={deepseekKey}
+            onChange={setDeepseekKey}
+            onNext={() => setStep(14)}
+            type="password"
+            placeholder="sk-..."
+            hint="Pobierz klucz na platform.deepseek.com → API Keys."
+          />
+        )}
+
+        {/* Anthropic key — optional, for creative / Visioner mode */}
+        {step === 14 && (
+          <TextInputStep
+            question="klucz Anthropic API"
+            subtitle="dla kreatywnych rozmów i trybu Wizjonera — opcjonalne, możesz pominąć"
+            value={anthropicKey}
+            onChange={setAnthropicKey}
+            onNext={() => setStep(15)}
+            type="password"
+            placeholder="sk-ant-... (opcjonalne)"
+            required={false}
+            hint="Pobierz klucz na console.anthropic.com → API Keys."
+          />
+        )}
+
+        {/* OpenAI key — for Whisper STT */}
+        {step === 15 && (
+          <TextInputStep
+            question="klucz OpenAI API"
+            subtitle="do lepszego rozpoznawania mowy (Whisper) — opcjonalne, pomiń jeśli nie chcesz trybu głosowego"
+            value={openAiKey}
+            onChange={setOpenAiKey}
+            onNext={() => setStep(16)}
+            type="password"
+            placeholder="sk-... (opcjonalne)"
+            required={false}
+            hint="Pobierz klucz na platform.openai.com → API Keys."
+          />
+        )}
+
+        {/* ElevenLabs key — for TTS voice */}
+        {step === 16 && (
+          <TextInputStep
             question="klucz ElevenLabs API"
-            subtitle="do trybu głosowego — Foun będzie mówił. możesz to pominąć i dodać później."
+            subtitle={`do głosu Founa — Foun mówi głosem ${FOUN_VOICES[founVoice].name}. możesz to pominąć.`}
             value={elevenLabsKey}
             onChange={setElevenLabsKey}
-            onNext={() => setStep(14)}
+            onNext={() => setStep(17)}
             type="password"
             placeholder="opcjonalne — pomiń jeśli chcesz tylko tekstowo"
             required={false}
@@ -290,7 +325,7 @@ export default function OnboardingWizard() {
           />
         )}
 
-        {step === 14 && <ReadySlide name={name || "Założycielu"} onStart={finish} />}
+        {step === 17 && <ReadySlide name={name || "Założycielu"} onStart={finish} />}
       </div>
     </div>
   );

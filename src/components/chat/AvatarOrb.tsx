@@ -32,6 +32,8 @@ export default function AvatarOrb({ state = "breath", size = "md", className }: 
         "rounded-full bg-[#F5A623] flex-shrink-0",
         SIZE_MAP[size],
         STATE_ANIMATION[state],
+        state === "speaking" && "animate-orb-glow",
+        state === "listening" && "animate-orb-ring",
         className
       )}
     />
