@@ -2,44 +2,32 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getUserProfile, saveUserProfile } from "@/lib/storage";
-import type { UserProfile } from "@/types";
+import { getAllProjects, setActiveProject } from "@/lib/storage";
+import type { ProjectMeta } from "@/types";
 import AvatarOrb from "@/components/chat/AvatarOrb";
-
-type Screen = "loading" | "welcome";
+import { Plus, ChevronRight } from "lucide-react";
 
 export default function RootPage() {
   const router = useRouter();
-  const [screen, setScreen] = useState<Screen>("loading");
-  const [importText, setImportText] = useState("");
-  const [importError, setImportError] = useState("");
-  const [showImport, setShowImport] = useState(false);
+  const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const profile = getUserProfile();
-    if (profile?.onboardingCompleted) {
-      router.replace("/chat");
-    } else {
-      setScreen("welcome");
-    }
-  }, [router]);
+    const all = getAllProjects();
+    setProjects(all);
+    setReady(true);
+  }, []);
 
-  const handleImport = () => {
-    setImportError("");
-    try {
-      const parsed = JSON.parse(importText) as UserProfile;
-      if (!parsed.name || !parsed.onboardingCompleted) {
-        setImportError("Nieprawidłowy plik profilu. Upewnij się, że eksportowałeś go z ustawień.");
-        return;
-      }
-      saveUserProfile(parsed);
-      router.replace("/chat");
-    } catch {
-      setImportError("Nieprawidłowy JSON. Wklej dokładnie to, co skopiowałeś z ustawień.");
-    }
+  const openProject = (id: string) => {
+    setActiveProject(id);
+    router.push("/chat");
   };
 
-  if (screen === "loading") {
+  const newProject = () => {
+    router.push("/onboarding");
+  };
+
+  if (!ready) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-10 h-10 rounded-full bg-[#F5A623] animate-orb-breath" />
@@ -47,79 +35,83 @@ export default function RootPage() {
     );
   }
 
+  // First visit — no projects yet
+  if (projects.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-white">
+        <div className="w-full max-w-sm flex flex-col items-center gap-10">
+          <div className="flex flex-col items-center gap-3">
+            <AvatarOrb size="lg" state="breath" />
+            <div className="text-center">
+              <h1 className="text-3xl font-bold text-[#1A1A2E] tracking-tight">foun</h1>
+              <p className="text-sm text-gray-500 mt-1">twój AI co-founder</p>
+            </div>
+          </div>
+
+          <div className="w-full space-y-2 text-sm text-gray-600">
+            {[
+              { icon: "🧠", text: "pamięta Twój startup i łączy kropki" },
+              { icon: "🎯", text: "konkretne rady, nie ogólniki" },
+              { icon: "🎙️", text: "rozmawia głosem — jak prawdziwy co-founder" },
+            ].map(({ icon, text }) => (
+              <div key={text} className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl">
+                <span className="text-lg">{icon}</span>
+                <span>{text}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="w-full flex flex-col gap-3">
+            <button
+              onClick={newProject}
+              className="w-full py-4 bg-[#1A1A2E] text-white rounded-2xl text-sm font-medium hover:bg-[#2a2a4e] transition-all active:scale-95"
+            >
+              stwórz swój profil
+            </button>
+            <p className="text-xs text-gray-400 text-center">
+              dane przechowywane lokalnie w tej przeglądarce
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Has projects — show selector
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 bg-white">
-      <div className="w-full max-w-sm flex flex-col items-center gap-8">
-        {/* Logo */}
+      <div className="w-full max-w-sm flex flex-col gap-8">
         <div className="flex flex-col items-center gap-3">
           <AvatarOrb size="lg" state="breath" />
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-[#1A1A2E]">foun</h1>
-            <p className="text-sm text-gray-500 mt-1">twój AI co-founder</p>
+            <h1 className="text-3xl font-bold text-[#1A1A2E] tracking-tight">foun</h1>
+            <p className="text-sm text-gray-500 mt-1">wybierz projekt</p>
           </div>
         </div>
 
-        {!showImport ? (
-          <>
-            {/* New user */}
-            <div className="w-full flex flex-col gap-3">
-              <button
-                onClick={() => router.push("/onboarding")}
-                className="w-full py-4 bg-[#1A1A2E] text-white rounded-2xl text-sm font-medium hover:bg-opacity-90 transition-all active:scale-95 shadow-sm"
-              >
-                zaczynam od nowa
-              </button>
-
-              <button
-                onClick={() => setShowImport(true)}
-                className="w-full py-4 border-2 border-gray-200 text-gray-600 rounded-2xl text-sm font-medium hover:border-gray-300 transition-all active:scale-95"
-              >
-                mam już konto — przywróć profil
-              </button>
-            </div>
-
-            <p className="text-xs text-gray-400 text-center max-w-xs">
-              Twoje dane są przechowywane lokalnie w przeglądarce. Żeby przenieść profil między urządzeniami, użyj eksportu w ustawieniach.
-            </p>
-          </>
-        ) : (
-          <>
-            {/* Import profile */}
-            <div className="w-full flex flex-col gap-3">
-              <div>
-                <p className="text-sm font-medium text-[#1A1A2E] mb-1">wklej swój profil</p>
-                <p className="text-xs text-gray-400 mb-3">
-                  Skopiuj JSON z <strong>Ustawienia → Eksportuj profil</strong> i wklej poniżej.
-                </p>
-                <textarea
-                  value={importText}
-                  onChange={(e) => { setImportText(e.target.value); setImportError(""); }}
-                  rows={6}
-                  placeholder='{"name":"Jan","companyName":"...", ...}'
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-xs font-mono resize-none"
-                />
-                {importError && (
-                  <p className="text-xs text-red-500 mt-1">{importError}</p>
-                )}
+        <div className="space-y-2">
+          {projects.map((project) => (
+            <button
+              key={project.id}
+              onClick={() => openProject(project.id)}
+              className="w-full flex items-center justify-between px-4 py-4 bg-gray-50 hover:bg-amber-50 border-2 border-transparent hover:border-[#F5A623] rounded-2xl transition-all active:scale-[0.98] group"
+            >
+              <div className="text-left">
+                <p className="text-sm font-semibold text-[#1A1A2E]">{project.company}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{project.name}</p>
               </div>
+              <ChevronRight size={16} className="text-gray-300 group-hover:text-[#F5A623] transition-colors" />
+            </button>
+          ))}
+        </div>
 
-              <button
-                onClick={handleImport}
-                disabled={!importText.trim()}
-                className="w-full py-4 bg-[#1A1A2E] text-white rounded-2xl text-sm font-medium hover:bg-opacity-90 transition-all disabled:opacity-40"
-              >
-                przywróć profil
-              </button>
-
-              <button
-                onClick={() => { setShowImport(false); setImportText(""); setImportError(""); }}
-                className="w-full py-3 text-gray-400 text-sm"
-              >
-                ← wróć
-              </button>
-            </div>
-          </>
-        )}
+        <button
+          onClick={newProject}
+          className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 rounded-2xl text-sm text-gray-400 hover:border-[#F5A623] hover:text-[#F5A623] transition-all"
+        >
+          <Plus size={16} />
+          nowy projekt
+        </button>
       </div>
     </div>
   );

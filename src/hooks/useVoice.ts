@@ -14,8 +14,6 @@ import type { FounVoice } from "@/types";
 export type VoiceState = "idle" | "listening" | "thinking" | "speaking";
 
 interface UseVoiceOptions {
-  elevenLabsApiKey?: string;
-  openAiApiKey?: string;
   founVoice?: FounVoice;
   onTranscript: (text: string) => void;
   onSpeak?: (text: string) => void;
@@ -23,8 +21,6 @@ interface UseVoiceOptions {
 }
 
 export function useVoice({
-  elevenLabsApiKey,
-  openAiApiKey,
   founVoice,
   onTranscript,
   onSpeak,
@@ -45,7 +41,8 @@ export function useVoice({
     setAutoMode(autoModeRef.current);
   }, []);
 
-  const isSupported = !!openAiApiKey || isSpeechRecognitionSupported();
+  // Whisper STT is always available (key is server-side); browser fallback otherwise
+  const isSupported = true;
 
   const startListening = useCallback(() => {
     setLiveTranscript("");
@@ -53,14 +50,13 @@ export function useVoice({
     setAudioLevel(0);
     setVoiceState("listening");
 
-    if (openAiApiKey) {
+    // Try Whisper first (server-side key); fall back to Web Speech API if unsupported
+    if (typeof window !== "undefined" && navigator.mediaDevices?.getUserMedia) {
       const rec = createWhisperRecorder(
-        openAiApiKey,
         (transcript) => {
           setLiveTranscript(transcript);
           setVoiceState("thinking");
           onTranscript(transcript);
-          // liveTranscript is cleared when speakText() starts
         },
         () => {
           setVoiceState((s) => (s === "listening" ? "idle" : s));
@@ -75,7 +71,7 @@ export function useVoice({
       );
       whisperRef.current = rec;
       rec?.start();
-    } else {
+    } else if (isSpeechRecognitionSupported()) {
       const rec = createSpeechRecognition(
         (transcript, isFinal) => {
           setLiveTranscript(transcript);
@@ -102,8 +98,11 @@ export function useVoice({
       );
       legacyRef.current = rec;
       rec?.start();
+    } else {
+      setVoiceState("idle");
+      onError?.("Brak obsługi mikrofonu w tej przeglądarce.");
     }
-  }, [openAiApiKey, onTranscript, onError]);
+  }, [onTranscript, onError]);
 
   const stopListening = useCallback(() => {
     whisperRef.current?.stop();
@@ -113,7 +112,7 @@ export function useVoice({
   const speakText = useCallback(
     async (text: string) => {
       setVoiceState("speaking");
-      setLiveTranscript(""); // clear user transcript when Foun starts speaking
+      setLiveTranscript("");
       onSpeak?.(text);
 
       const voiceId = getVoiceId(founVoice);
@@ -126,17 +125,16 @@ export function useVoice({
         }
       };
 
-      if (elevenLabsApiKey) {
-        const buffer = await fetchTTS(text, elevenLabsApiKey, { voiceId });
-        if (buffer) {
-          playAudio(buffer, done);
-          return;
-        }
+      // Try ElevenLabs TTS (server-side key); fall back to browser TTS
+      const buffer = await fetchTTS(text, { voiceId });
+      if (buffer) {
+        playAudio(buffer, done);
+        return;
       }
 
       speakWithBrowser(text, done);
     },
-    [elevenLabsApiKey, founVoice, onSpeak, startListening]
+    [founVoice, onSpeak, startListening]
   );
 
   const abort = useCallback(() => {

@@ -4,14 +4,17 @@ export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, voiceId, apiKey, stability, similarityBoost, style, speakerBoost } =
-      await req.json();
+    // API key comes from server environment — never from the client
+    const apiKey = process.env.ELEVENLABS_API_KEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "Brak klucza ElevenLabs API" }), {
-        status: 401,
+      return new Response(JSON.stringify({ error: "Brak klucza ElevenLabs API — ustaw ELEVENLABS_API_KEY w Vercel." }), {
+        status: 500,
       });
     }
+
+    const { text, voiceId, stability, similarityBoost, style, speakerBoost } =
+      await req.json();
 
     const response = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,

@@ -65,8 +65,6 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
   const founName = FOUN_VOICES[profile.founVoice ?? "male"].name;
 
   const { voiceState, liveTranscript, audioLevel, autoMode, isSupported, startListening, stopListening, speakText, abort, toggleAutoMode } = useVoice({
-    elevenLabsApiKey: profile.elevenLabsApiKey,
-    openAiApiKey: profile.openAiApiKey,
     founVoice: profile.founVoice,
     onTranscript: handleTranscript,
     onError: (err) => setError(err),
@@ -107,8 +105,6 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
         body: JSON.stringify({
           messages: history,
           systemPrompt,
-          deepseekApiKey: profile.deepseekApiKey,
-          anthropicApiKey: profile.anthropicApiKey,
           visionerMode,
         }),
       });
@@ -278,7 +274,7 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
           </button>
           <p className="text-xs text-gray-400">
             {voiceState === "idle" && "naciśnij i mów"}
-            {isListening && (profile.openAiApiKey ? "naciśnij aby wysłać" : "naciśnij aby zatrzymać")}
+            {isListening && "naciśnij aby wysłać"}
             {isSpeaking && `${founName} mówi — naciśnij aby zatrzymać`}
             {voiceState === "thinking" && "czekam na odpowiedź..."}
           </p>

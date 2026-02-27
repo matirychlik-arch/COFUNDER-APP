@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/types";
-import { getUserProfile } from "@/lib/storage";
+import { getUserProfile, getActiveProjectId } from "@/lib/storage";
 import ChatHome from "@/components/chat/ChatHome";
 
 export default function ChatPage() {
@@ -11,6 +11,9 @@ export default function ChatPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
+    const projectId = getActiveProjectId();
+    if (!projectId) { router.replace("/"); return; }
+
     const p = getUserProfile();
     if (!p?.onboardingCompleted) {
       router.replace("/onboarding");

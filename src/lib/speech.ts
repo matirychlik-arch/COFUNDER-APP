@@ -10,12 +10,11 @@ export interface WhisperRecorderInstance {
   getAudioLevel: () => number; // 0-1 normalised volume
 }
 
-/** Create a Whisper-powered recorder. Requires an OpenAI API key.
+/** Create a Whisper-powered recorder. OpenAI API key is handled server-side.
  *  onResult is called once, after stop(), with the final transcript.
  *  onAudioLevel is called ~10×/s with a normalised 0-1 level.
  */
 export function createWhisperRecorder(
-  apiKey: string,
   onResult: (transcript: string) => void,
   onEnd: () => void,
   onError: (error: string) => void,
@@ -101,9 +100,9 @@ export function createWhisperRecorder(
             }
 
             try {
+              // API key is handled server-side — do NOT send it from the client
               const form = new FormData();
               form.append("audio", blob, "audio.webm");
-              form.append("apiKey", apiKey);
 
               const res = await fetch("/api/stt", { method: "POST", body: form });
               const data = await res.json();

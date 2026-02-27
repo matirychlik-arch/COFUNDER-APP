@@ -20,7 +20,6 @@ export interface TTSOptions {
 
 export async function fetchTTS(
   text: string,
-  apiKey: string,
   options: TTSOptions = {}
 ): Promise<ArrayBuffer | null> {
   const {
@@ -32,13 +31,13 @@ export async function fetchTTS(
   } = options;
 
   try {
+    // API key is handled server-side — do NOT send it from the client
     const response = await fetch(`/api/tts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text,
         voiceId,
-        apiKey,
         stability,
         similarityBoost,
         style,
