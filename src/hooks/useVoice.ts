@@ -60,7 +60,7 @@ export function useVoice({
           setLiveTranscript(transcript);
           setVoiceState("thinking");
           onTranscript(transcript);
-          setLiveTranscript("");
+          // liveTranscript is cleared when speakText() starts
         },
         () => {
           setVoiceState((s) => (s === "listening" ? "idle" : s));
@@ -113,6 +113,7 @@ export function useVoice({
   const speakText = useCallback(
     async (text: string) => {
       setVoiceState("speaking");
+      setLiveTranscript(""); // clear user transcript when Foun starts speaking
       onSpeak?.(text);
 
       const voiceId = getVoiceId(founVoice);

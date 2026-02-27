@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { UserProfile } from "@/types";
 import { getUserProfile, updateUserProfile, resetConversations, resetAllData } from "@/lib/storage";
-import { Eye, EyeOff, AlertTriangle, CheckCircle } from "lucide-react";
+import { Eye, EyeOff, AlertTriangle, CheckCircle, Download } from "lucide-react";
 import AppSidebar from "@/components/layout/AppSidebar";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +43,19 @@ export default function SettingsPage() {
 
   const handleDeleteAccount = () => {
     resetAllData();
-    router.replace("/onboarding");
+    router.replace("/");
+  };
+
+  const handleExportProfile = () => {
+    if (!profile) return;
+    const json = JSON.stringify(profile, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `foun-profil-${profile.name.toLowerCase().replace(/\s+/g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (!profile) return null;
@@ -194,7 +206,7 @@ export default function SettingsPage() {
                   {showElevenKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mt-1">elevenlabs.io — głos Zosia lub Adam (eleven_v3)</p>
+              <p className="text-xs text-gray-400 mt-1">elevenlabs.io — głos Zosia lub Adam</p>
             </div>
           </section>
 
@@ -217,6 +229,26 @@ export default function SettingsPage() {
               "zapisz zmiany"
             )}
           </button>
+
+          {/* Export profile */}
+          <section className="space-y-3 border-t border-gray-100 pt-6">
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">backup profilu</h2>
+            <div className="p-4 border-2 border-gray-100 rounded-xl flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-[#1A1A2E]">eksportuj profil</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Pobierz JSON z Twoim profilem i kluczami API. Użyj go aby przywrócić konto na innym urządzeniu lub po resecie.
+                </p>
+              </div>
+              <button
+                onClick={handleExportProfile}
+                className="flex items-center gap-2 px-3 py-2 border-2 border-gray-200 text-gray-600 rounded-xl text-xs font-medium hover:border-gray-300 transition-colors flex-shrink-0"
+              >
+                <Download size={14} />
+                pobierz
+              </button>
+            </div>
+          </section>
 
           {/* Danger zone */}
           <section className="space-y-3 border-t border-gray-100 pt-6">

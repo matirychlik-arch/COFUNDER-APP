@@ -4,7 +4,7 @@
 
 import { FOUN_VOICES, type FounVoice } from "@/types";
 
-export const TTS_MODEL = "eleven_v3";
+export const TTS_MODEL = "eleven_multilingual_v2";
 
 export function getVoiceId(founVoice: FounVoice | undefined): string {
   return FOUN_VOICES[founVoice ?? "male"].id;
