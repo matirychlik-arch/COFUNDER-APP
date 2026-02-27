@@ -64,7 +64,7 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
   const folderLabel = folder?.label ?? conversation.folderSlug;
   const founName = FOUN_VOICES[profile.founVoice ?? "male"].name;
 
-  const { voiceState, liveTranscript, audioLevel, autoMode, isSupported, startListening, stopListening, speakText, abort, toggleAutoMode } = useVoice({
+  const { voiceState, liveTranscript, audioLevel, autoMode, isSupported, startListening, stopListening, abort, toggleAutoMode, startTTSStream, feedTTSChunk, endTTSStream } = useVoice({
     founVoice: profile.founVoice,
     onTranscript: handleTranscript,
     onError: (err) => setError(err),
@@ -99,6 +99,9 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
       const systemPrompt = buildSystemPrompt(profile, folderLabel, visionerMode);
       const history = updatedMessages.map((m) => ({ role: m.role, content: m.content }));
 
+      // Start streaming TTS before the fetch so first sentence plays ASAP
+      startTTSStream();
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -119,10 +122,15 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          accumulatedRef.current += decoder.decode(value, { stream: true });
+          const chunk = decoder.decode(value, { stream: true });
+          accumulatedRef.current += chunk;
           setLatestResponse(accumulatedRef.current);
+          feedTTSChunk(chunk); // feed each chunk for sentence-by-sentence TTS
         }
       }
+
+      // Flush any remaining text and signal stream end
+      endTTSStream();
 
       const aiText = accumulatedRef.current;
       const aiMsg: Message = { id: generateId(), role: "assistant", content: aiText, createdAt: new Date().toISOString(), isVoice: true };
@@ -131,8 +139,6 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
 
       const conv2 = getConversation(conversation.id);
       if (conv2) { conv2.messages = withAI; saveConversation(conv2); }
-
-      await speakText(aiText);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Błąd");
     }

@@ -8,7 +8,7 @@ import {
   type WhisperRecorderInstance,
   type SpeechRecognitionInstance,
 } from "@/lib/speech";
-import { fetchTTS, playAudio, stopAudio, speakWithBrowser, getVoiceId } from "@/lib/elevenlabs";
+import { fetchTTS, playAudio, stopAudio, speakWithBrowser, getVoiceId, stripMarkdown } from "@/lib/elevenlabs";
 import type { FounVoice } from "@/types";
 
 export type VoiceState = "idle" | "listening" | "thinking" | "speaking";
@@ -35,6 +35,13 @@ export function useVoice({
   const legacyRef = useRef<SpeechRecognitionInstance | null>(null);
   const interimRef = useRef("");
   const autoModeRef = useRef(false);
+
+  // Streaming TTS queue state
+  const ttsQueueRef = useRef<string[]>([]);
+  const ttsActiveRef = useRef(false);
+  const ttsBufRef = useRef("");          // sentence accumulation buffer
+  const ttsStreamDoneRef = useRef(true); // true when AI stream is finished
+  const ttsVoiceIdRef = useRef("");
 
   const toggleAutoMode = useCallback(() => {
     autoModeRef.current = !autoModeRef.current;
@@ -116,6 +123,7 @@ export function useVoice({
       onSpeak?.(text);
 
       const voiceId = getVoiceId(founVoice);
+      const clean = stripMarkdown(text);
 
       const done = () => {
         if (autoModeRef.current) {
@@ -126,21 +134,98 @@ export function useVoice({
       };
 
       // Try ElevenLabs TTS (server-side key); fall back to browser TTS
-      const buffer = await fetchTTS(text, { voiceId });
+      const buffer = await fetchTTS(clean, { voiceId });
       if (buffer) {
         playAudio(buffer, done);
         return;
       }
 
-      speakWithBrowser(text, done);
+      speakWithBrowser(clean, done);
     },
     [founVoice, onSpeak, startListening]
   );
+
+  // ── Streaming TTS (sentence-by-sentence) ──────────────────────────────────
+  // Uses a ref so recursive calls always see the latest closure values
+  const runTTSQueue = useRef<() => void>(() => {});
+  runTTSQueue.current = async () => {
+    if (ttsActiveRef.current) return;
+    if (ttsQueueRef.current.length === 0) {
+      // Queue empty — if AI stream is also done, wrap up
+      if (ttsStreamDoneRef.current) {
+        if (autoModeRef.current) {
+          setTimeout(() => startListening(), 400);
+        } else {
+          setVoiceState("idle");
+        }
+      }
+      return;
+    }
+
+    ttsActiveRef.current = true;
+    const sentence = ttsQueueRef.current.shift()!;
+
+    const buffer = await fetchTTS(sentence, { voiceId: ttsVoiceIdRef.current });
+    ttsActiveRef.current = false;
+
+    if (buffer) {
+      setVoiceState("speaking");
+      playAudio(buffer, () => runTTSQueue.current());
+    } else {
+      // ElevenLabs unavailable — skip remaining queue silently
+      ttsQueueRef.current = [];
+      ttsStreamDoneRef.current = true;
+      setVoiceState("idle");
+    }
+  };
+
+  /** Call before starting the AI stream. Resets queue and sets state to "thinking". */
+  const startTTSStream = useCallback(() => {
+    ttsVoiceIdRef.current = getVoiceId(founVoice);
+    ttsQueueRef.current = [];
+    ttsActiveRef.current = false;
+    ttsBufRef.current = "";
+    ttsStreamDoneRef.current = false;
+    setVoiceState("thinking");
+  }, [founVoice]);
+
+  /** Feed each text chunk from the AI stream. Extracts complete sentences and queues them. */
+  const feedTTSChunk = useCallback((chunk: string) => {
+    ttsBufRef.current += chunk;
+    // Match complete sentences ending in . ! ? … or newline
+    const re = /[^.!?…\n]+[.!?…\n]+/g;
+    let m: RegExpExecArray | null;
+    let last = 0;
+    while ((m = re.exec(ttsBufRef.current)) !== null) {
+      const sentence = stripMarkdown(m[0]).trim();
+      if (sentence.length > 4) {
+        ttsQueueRef.current.push(sentence);
+        last = re.lastIndex;
+      }
+    }
+    ttsBufRef.current = ttsBufRef.current.slice(last);
+    runTTSQueue.current();
+  }, []);
+
+  /** Call when AI stream ends. Flushes any remaining buffered text. */
+  const endTTSStream = useCallback(() => {
+    const remaining = stripMarkdown(ttsBufRef.current).trim();
+    if (remaining.length > 0) ttsQueueRef.current.push(remaining);
+    ttsBufRef.current = "";
+    ttsStreamDoneRef.current = true;
+    runTTSQueue.current();
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const abort = useCallback(() => {
     whisperRef.current?.abort();
     legacyRef.current?.abort();
     stopAudio();
+    // Clear streaming TTS queue
+    ttsQueueRef.current = [];
+    ttsActiveRef.current = false;
+    ttsBufRef.current = "";
+    ttsStreamDoneRef.current = true;
     setVoiceState("idle");
     setLiveTranscript("");
     setAudioLevel(0);
@@ -158,5 +243,8 @@ export function useVoice({
     speakText,
     abort,
     toggleAutoMode,
+    startTTSStream,
+    feedTTSChunk,
+    endTTSStream,
   };
 }

@@ -5,8 +5,8 @@ export type UserGender = 'male' | 'female' | 'other' | 'prefer_not';
 export type FounVoice = 'female' | 'male';
 
 export const FOUN_VOICES = {
-  female: { id: 'lcMyyd2HUfFzxdCaC4Ta', name: 'Zosia' },
-  male:   { id: 'EOVAuWqgSZN2Oel78Psj', name: 'Adam' },
+  female: { id: '21m00Tcm4TlvDq8ikWAM', name: 'Zosia' },
+  male:   { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam' },
 } as const;
 
 export interface UserProfile {
