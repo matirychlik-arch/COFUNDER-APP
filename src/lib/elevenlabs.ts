@@ -60,7 +60,11 @@ export async function fetchTTS(
       }),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({ error: response.status }));
+      console.error("[TTS] ElevenLabs błąd:", response.status, errData);
+      return null;
+    }
     return await response.arrayBuffer();
   } catch {
     return null;

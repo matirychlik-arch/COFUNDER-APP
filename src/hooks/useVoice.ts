@@ -172,10 +172,11 @@ export function useVoice({
       setVoiceState("speaking");
       playAudio(buffer, () => runTTSQueue.current());
     } else {
-      // ElevenLabs unavailable — skip remaining queue silently
+      // ElevenLabs unavailable — show error and reset
       ttsQueueRef.current = [];
       ttsStreamDoneRef.current = true;
       setVoiceState("idle");
+      onError?.("ElevenLabs TTS nie działa — sprawdź klucz i otwórz /api/tts-test w przeglądarce");
     }
   };
 

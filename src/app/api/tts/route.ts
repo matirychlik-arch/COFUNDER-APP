@@ -38,9 +38,11 @@ export async function POST(req: NextRequest) {
     );
 
     if (!response.ok) {
-      return new Response(JSON.stringify({ error: "ElevenLabs API error" }), {
-        status: response.status,
-      });
+      const errBody = await response.text().catch(() => "");
+      return new Response(
+        JSON.stringify({ error: `ElevenLabs ${response.status}`, detail: errBody }),
+        { status: response.status }
+      );
     }
 
     const audioBuffer = await response.arrayBuffer();
