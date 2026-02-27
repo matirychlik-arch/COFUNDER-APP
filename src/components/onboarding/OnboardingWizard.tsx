@@ -12,7 +12,7 @@ import TextInputStep from "./TextInputStep";
 import FeatureSlide from "./FeatureSlide";
 import ReadySlide from "./ReadySlide";
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 15;
 
 export default function OnboardingWizard() {
   const router = useRouter();
