@@ -63,7 +63,9 @@ export function useChat({
           body: JSON.stringify({
             messages,
             systemPrompt,
-            apiKey: profile.anthropicApiKey,
+            deepseekApiKey: profile.deepseekApiKey,
+            anthropicApiKey: profile.anthropicApiKey,
+            visionerMode,
           }),
           signal: abortRef.current.signal,
         });

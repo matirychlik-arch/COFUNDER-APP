@@ -45,7 +45,8 @@ export default function SessionEndModal({
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
           profile,
           folderLabel,
-          apiKey: profile.anthropicApiKey,
+          deepseekApiKey: profile.deepseekApiKey,
+          anthropicApiKey: profile.anthropicApiKey,
         }),
       });
 

@@ -11,7 +11,9 @@ import { cn } from "@/lib/utils";
 export default function SettingsPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [showDeepseekKey, setShowDeepseekKey] = useState(false);
   const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+  const [showOpenAiKey, setShowOpenAiKey] = useState(false);
   const [showElevenKey, setShowElevenKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const [confirmReset, setConfirmReset] = useState<"conversations" | "account" | null>(null);
@@ -121,44 +123,78 @@ export default function SettingsPage() {
 
             <div>
               <label className="text-xs text-gray-500 mb-1 block">
-                Anthropic API Key <span className="text-red-400">*wymagany</span>
+                DeepSeek API Key <span className="text-red-400">*wymagany</span>
               </label>
               <div className="relative">
                 <input
-                  type={showAnthropicKey ? "text" : "password"}
-                  value={profile.anthropicApiKey}
-                  onChange={(e) => update("anthropicApiKey", e.target.value)}
-                  placeholder="sk-ant-..."
+                  type={showDeepseekKey ? "text" : "password"}
+                  value={profile.deepseekApiKey ?? ""}
+                  onChange={(e) => update("deepseekApiKey", e.target.value)}
+                  placeholder="sk-..."
                   className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-sm font-mono"
                 />
-                <button
-                  onClick={() => setShowAnthropicKey(!showAnthropicKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                >
-                  {showAnthropicKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                <button onClick={() => setShowDeepseekKey(!showDeepseekKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  {showDeepseekKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              <p className="text-xs text-gray-400 mt-1">platform.deepseek.com — główny model AI</p>
             </div>
 
             <div>
               <label className="text-xs text-gray-500 mb-1 block">
-                ElevenLabs API Key <span className="text-gray-400">opcjonalny (tryb głosowy)</span>
+                Anthropic API Key <span className="text-gray-400">opcjonalny (kreatywne + Wizjoner)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showAnthropicKey ? "text" : "password"}
+                  value={profile.anthropicApiKey ?? ""}
+                  onChange={(e) => update("anthropicApiKey", e.target.value)}
+                  placeholder="sk-ant-..."
+                  className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-sm font-mono"
+                />
+                <button onClick={() => setShowAnthropicKey(!showAnthropicKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  {showAnthropicKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">console.anthropic.com — Claude Sonnet dla brainstormingu</p>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">
+                OpenAI API Key <span className="text-gray-400">opcjonalny (Whisper — lepsze rozumienie mowy)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showOpenAiKey ? "text" : "password"}
+                  value={profile.openAiApiKey ?? ""}
+                  onChange={(e) => update("openAiApiKey", e.target.value)}
+                  placeholder="sk-..."
+                  className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-sm font-mono"
+                />
+                <button onClick={() => setShowOpenAiKey(!showOpenAiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  {showOpenAiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">platform.openai.com — Whisper rozumie polski lepiej</p>
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">
+                ElevenLabs API Key <span className="text-gray-400">opcjonalny (głos Founa)</span>
               </label>
               <div className="relative">
                 <input
                   type={showElevenKey ? "text" : "password"}
                   value={profile.elevenLabsApiKey ?? ""}
                   onChange={(e) => update("elevenLabsApiKey", e.target.value)}
-                  placeholder="el_..."
+                  placeholder="..."
                   className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-[#F5A623] focus:outline-none text-sm font-mono"
                 />
-                <button
-                  onClick={() => setShowElevenKey(!showElevenKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                >
+                <button onClick={() => setShowElevenKey(!showElevenKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                   {showElevenKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              <p className="text-xs text-gray-400 mt-1">elevenlabs.io — głos Zosia lub Adam (eleven_v3)</p>
             </div>
           </section>
 
