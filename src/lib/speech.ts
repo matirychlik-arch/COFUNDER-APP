@@ -25,13 +25,15 @@ export function createSpeechRecognition(
     return null;
   }
 
-  const recognition = new (SpeechRecognition as new () => SpeechRecognition)();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognition = new (SpeechRecognition as new () => any)();
   recognition.lang = "pl-PL";
   recognition.continuous = true;
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
 
-  recognition.onresult = (event: SpeechRecognitionEvent) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  recognition.onresult = (event: any) => {
     let interimTranscript = "";
     let finalTranscript = "";
 
@@ -53,7 +55,8 @@ export function createSpeechRecognition(
 
   recognition.onend = () => onEnd();
 
-  recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  recognition.onerror = (event: any) => {
     const messages: Record<string, string> = {
       "no-speech": "Nie wykryto mowy. Spróbuj ponownie.",
       "audio-capture": "Brak dostępu do mikrofonu.",
