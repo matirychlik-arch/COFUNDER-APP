@@ -34,6 +34,7 @@ export function useVoice({
   const whisperRef = useRef<WhisperRecorderInstance | null>(null);
   const legacyRef = useRef<SpeechRecognitionInstance | null>(null);
   const interimRef = useRef("");
+  const interimDisplayRef = useRef<SpeechRecognitionInstance | null>(null); // Web Speech for live display only
   const autoModeRef = useRef(false);
 
   // Streaming TTS queue state
@@ -59,17 +60,34 @@ export function useVoice({
 
     // Try Whisper first (server-side key); fall back to Web Speech API if unsupported
     if (typeof window !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function") {
+      // Run Web Speech API in parallel for live interim display only
+      if (isSpeechRecognitionSupported()) {
+        const interimRec = createSpeechRecognition(
+          (transcript) => { setLiveTranscript(transcript); },
+          () => {},
+          () => {}
+        );
+        interimRec?.start();
+        interimDisplayRef.current = interimRec;
+      }
+
       const rec = createWhisperRecorder(
         (transcript) => {
+          interimDisplayRef.current?.abort();
+          interimDisplayRef.current = null;
           setLiveTranscript(transcript);
           setVoiceState("thinking");
           onTranscript(transcript);
         },
         () => {
+          interimDisplayRef.current?.abort();
+          interimDisplayRef.current = null;
           setVoiceState((s) => (s === "listening" ? "idle" : s));
           setAudioLevel(0);
         },
         (err) => {
+          interimDisplayRef.current?.abort();
+          interimDisplayRef.current = null;
           setVoiceState("idle");
           setAudioLevel(0);
           onError?.(err);
@@ -112,6 +130,8 @@ export function useVoice({
   }, [onTranscript, onError]);
 
   const stopListening = useCallback(() => {
+    interimDisplayRef.current?.abort();
+    interimDisplayRef.current = null;
     whisperRef.current?.stop();
     legacyRef.current?.stop();
   }, []);
@@ -166,13 +186,16 @@ export function useVoice({
     const sentence = ttsQueueRef.current.shift()!;
 
     const buffer = await fetchTTS(sentence, { voiceId: ttsVoiceIdRef.current });
-    ttsActiveRef.current = false;
 
     if (buffer) {
       setVoiceState("speaking");
-      playAudio(buffer, () => runTTSQueue.current());
+      playAudio(buffer, () => {
+        ttsActiveRef.current = false; // only free the lock after audio finishes
+        runTTSQueue.current();
+      });
     } else {
       // ElevenLabs unavailable — show error and reset
+      ttsActiveRef.current = false;
       ttsQueueRef.current = [];
       ttsStreamDoneRef.current = true;
       setVoiceState("idle");
@@ -219,6 +242,8 @@ export function useVoice({
   // ─────────────────────────────────────────────────────────────────────────
 
   const abort = useCallback(() => {
+    interimDisplayRef.current?.abort();
+    interimDisplayRef.current = null;
     whisperRef.current?.abort();
     legacyRef.current?.abort();
     stopAudio();

@@ -49,6 +49,7 @@ function AudioWaveform({ level, active }: { level: number; active: boolean }) {
 export default function VoiceChat({ conversation, profile, onClose }: VoiceChatProps) {
   const [messages, setMessages] = useState<Message[]>(conversation.messages);
   const [latestResponse, setLatestResponse] = useState("");
+  const [lastUserText, setLastUserText] = useState("");
   const [visionerMode, setVisionerMode] = useState(conversation.visionerModeActive);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -81,6 +82,8 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
   };
 
   async function handleTranscript(text: string) {
+    setLastUserText(text);
+    setLatestResponse("");
     const userMsg: Message = {
       id: generateId(),
       role: "user",
@@ -202,7 +205,7 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
       </div>
 
       {/* ── Central section ── */}
-      <div className="flex flex-col items-center gap-6 flex-1 justify-center w-full max-w-sm">
+      <div className="flex flex-col items-center gap-4 flex-1 justify-center w-full max-w-sm">
         {/* Orb with glow wrapper */}
         <div className={cn(
           "relative flex items-center justify-center",
@@ -214,7 +217,7 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
         {/* State label */}
         <p className="text-[#1A1A2E] font-medium text-base">{STATE_LABELS[voiceState]}</p>
 
-        {/* Waveform — visible during listening */}
+        {/* Waveform — visible during listening or speaking */}
         <div className="h-10 flex items-center justify-center">
           {isListening && (
             // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -225,19 +228,35 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
           )}
         </div>
 
-        {/* Live transcript — visible while listening AND while thinking (Whisper returns after stop) */}
-        {(isListening || voiceState === "thinking") && liveTranscript && (
-          <p className="text-sm text-gray-500 text-center max-w-xs animate-fade-in italic">
-            &bdquo;{liveTranscript}&rdquo;
-          </p>
-        )}
+        {/* Conversation view — always visible once conversation starts */}
+        <div className="w-full flex flex-col gap-3">
+          {/* User bubble — shows live interim while speaking, final after stop */}
+          {(liveTranscript || lastUserText) && (
+            <div className="flex justify-end">
+              <div className="max-w-[85%] bg-gray-100 rounded-2xl rounded-br-sm px-4 py-2">
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {isListening || voiceState === "thinking"
+                    ? liveTranscript || lastUserText
+                    : lastUserText}
+                </p>
+              </div>
+            </div>
+          )}
 
-        {/* Foun response preview */}
-        {isSpeaking && latestResponse && (
-          <p className="text-sm text-amber-600 text-center max-w-xs leading-relaxed line-clamp-3 animate-fade-in">
-            {latestResponse}
-          </p>
-        )}
+          {/* Foun bubble — streams in as response arrives, stays visible while speaking */}
+          {latestResponse && (
+            <div className="flex justify-start">
+              <div className="max-w-[85%] bg-amber-50 border border-amber-100 rounded-2xl rounded-bl-sm px-4 py-2">
+                <p className="text-sm text-amber-800 leading-relaxed">
+                  {latestResponse}
+                  {(voiceState === "thinking" || voiceState === "speaking") && (
+                    <span className="inline-block w-1 h-3 ml-1 bg-amber-400 animate-pulse rounded-sm" />
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
 
         {error && (
           <p className="text-red-400 text-xs text-center max-w-xs">{error}</p>
