@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useConversation } from "@elevenlabs/react";
 import type { Conversation, Message, UserProfile } from "@/types";
 import { FOUN_VOICES } from "@/types";
 import { getFolderBySlug } from "@/lib/folders";
 import { getCustomFolders, getConversation, saveConversation } from "@/lib/storage";
 import { buildSystemPrompt } from "@/lib/anthropic";
+import { getVoiceId } from "@/lib/elevenlabs";
 import { generateId } from "@/lib/utils";
-import { useVoice } from "@/hooks/useVoice";
 import AvatarOrb from "./AvatarOrb";
 import VisionerToggle from "@/components/layout/VisionerToggle";
-import { X, Mic, MicOff, Repeat2, Maximize2 } from "lucide-react";
+import { X, Phone, PhoneOff, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { VoiceState } from "@/hooks/useVoice";
 
 interface VoiceChatProps {
   conversation: Conversation;
@@ -20,39 +22,29 @@ interface VoiceChatProps {
 }
 
 const STATE_LABELS: Record<string, string> = {
-  idle: "twoja kolej...",
+  idle: "naciśnij aby zacząć",
   listening: "słucham...",
   thinking: "myślę...",
   speaking: "Foun mówi...",
 };
 
-/** Animated waveform bars driven by audioLevel (0-1) */
-function AudioWaveform({ level, active }: { level: number; active: boolean }) {
-  const bars = 5;
-  return (
-    <div className="flex items-center gap-1 h-8">
-      {Array.from({ length: bars }).map((_, i) => {
-        const phase = Math.sin((Date.now() / 300 + i * 1.2)) * 0.5 + 0.5;
-        const height = active ? Math.max(0.15, level * phase) : 0.15;
-        return (
-          <div
-            key={i}
-            className="w-1 rounded-full bg-[#F5A623] transition-all duration-75"
-            style={{ height: `${8 + height * 24}px`, opacity: active ? 0.9 : 0.3 }}
-          />
-        );
-      })}
-    </div>
-  );
+interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
 }
 
 export default function VoiceChat({ conversation, profile, onClose }: VoiceChatProps) {
-  const [messages, setMessages] = useState<Message[]>(conversation.messages);
-  const [latestResponse, setLatestResponse] = useState("");
   const [visionerMode, setVisionerMode] = useState(conversation.visionerModeActive);
   const [error, setError] = useState<string | null>(null);
+  const [sessionActive, setSessionActive] = useState(false);
+  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+  const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
+  const [currentUserText, setCurrentUserText] = useState("");
+  const [currentFounText, setCurrentFounText] = useState("");
   const [tick, setTick] = useState(0);
-  const accumulatedRef = useRef("");
+
+  const messagesRef = useRef<Message[]>(conversation.messages);
+  const chatLogEndRef = useRef<HTMLDivElement>(null);
 
   // Waveform animation tick
   useEffect(() => {
@@ -60,94 +52,112 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
     return () => clearInterval(id);
   }, []);
 
+  // Auto-scroll conversation log
+  useEffect(() => {
+    chatLogEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatLog, currentUserText, currentFounText]);
+
   const folder = getFolderBySlug(conversation.folderSlug, getCustomFolders());
   const folderLabel = folder?.label ?? conversation.folderSlug;
   const founName = FOUN_VOICES[profile.founVoice ?? "male"].name;
 
-  const { voiceState, liveTranscript, audioLevel, autoMode, isSupported, startListening, stopListening, abort, toggleAutoMode, startTTSStream, feedTTSChunk, endTTSStream } = useVoice({
-    founVoice: profile.founVoice,
-    onTranscript: handleTranscript,
-    onError: (err) => setError(err),
+  const saveMessage = useCallback((role: "user" | "assistant", content: string) => {
+    const msg: Message = {
+      id: generateId(),
+      role,
+      content,
+      createdAt: new Date().toISOString(),
+      isVoice: true,
+    };
+    messagesRef.current = [...messagesRef.current, msg];
+    const conv = getConversation(conversation.id);
+    if (conv) {
+      conv.messages = messagesRef.current;
+      saveConversation(conv);
+    }
+  }, [conversation.id]);
+
+  const conv = useConversation({
+    onConnect: () => {
+      setSessionActive(true);
+      setVoiceState("listening");
+      setError(null);
+    },
+    onDisconnect: () => {
+      setSessionActive(false);
+      setVoiceState("idle");
+    },
+    onMessage: ({ message, source }) => {
+      if (source === "user") {
+        // User transcript received
+        const text = message;
+        setCurrentUserText(text);
+        setCurrentFounText("");
+        setVoiceState("thinking");
+        setChatLog((prev) => [...prev, { role: "user", text }]);
+        saveMessage("user", text);
+        setCurrentUserText("");
+      } else {
+        // Agent (Foun) response
+        const text = message;
+        setCurrentFounText(text);
+        setVoiceState("speaking");
+        setChatLog((prev) => [...prev, { role: "assistant", text }]);
+        saveMessage("assistant", text);
+        setCurrentFounText("");
+      }
+    },
+    onError: (msg) => {
+      setError(typeof msg === "string" ? msg : "Błąd połączenia z ElevenLabs");
+      setVoiceState("idle");
+    },
   });
+
+  // Sync isSpeaking from ElevenLabs
+  useEffect(() => {
+    if (!sessionActive) return;
+    setVoiceState(conv.isSpeaking ? "speaking" : "listening");
+  }, [conv.isSpeaking, sessionActive]);
+
+  const startSession = useCallback(async () => {
+    setError(null);
+    try {
+      // Fetch signed URL from our server (which also creates the agent if needed)
+      const res = await fetch("/api/elevenlabs/signed-url", { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      const { signedUrl } = await res.json();
+
+      const systemPrompt = buildSystemPrompt(profile, folderLabel, visionerMode);
+      const voiceId = getVoiceId(profile.founVoice);
+
+      await conv.startSession({
+        signedUrl,
+        overrides: {
+          agent: {
+            prompt: { prompt: systemPrompt },
+            firstMessage: `Hej ${profile.name}! Gotowy na rozmowę o ${folderLabel}?`,
+            language: "pl",
+          },
+          tts: { voiceId },
+        },
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nie udało się połączyć");
+    }
+  }, [conv, profile, folderLabel, visionerMode]);
+
+  const endSession = useCallback(async () => {
+    await conv.endSession();
+    setSessionActive(false);
+    setVoiceState("idle");
+    setChatLog([]);
+  }, [conv]);
 
   const toggleVisioner = () => {
     const newVal = !visionerMode;
     setVisionerMode(newVal);
-    const conv = getConversation(conversation.id);
-    if (conv) {
-      conv.visionerModeActive = newVal;
-      saveConversation(conv);
-    }
-  };
-
-  async function handleTranscript(text: string) {
-    const userMsg: Message = {
-      id: generateId(),
-      role: "user",
-      content: text,
-      createdAt: new Date().toISOString(),
-      isVoice: true,
-    };
-
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
-
-    const conv = getConversation(conversation.id);
-    if (conv) { conv.messages = updatedMessages; saveConversation(conv); }
-
-    try {
-      const systemPrompt = buildSystemPrompt(profile, folderLabel, visionerMode);
-      const history = updatedMessages.map((m) => ({ role: m.role, content: m.content }));
-
-      // Start streaming TTS before the fetch so first sentence plays ASAP
-      startTTSStream();
-
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: history,
-          systemPrompt,
-          visionerMode,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Błąd API");
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      accumulatedRef.current = "";
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          accumulatedRef.current += chunk;
-          setLatestResponse(accumulatedRef.current);
-          feedTTSChunk(chunk); // feed each chunk for sentence-by-sentence TTS
-        }
-      }
-
-      // Flush any remaining text and signal stream end
-      endTTSStream();
-
-      const aiText = accumulatedRef.current;
-      const aiMsg: Message = { id: generateId(), role: "assistant", content: aiText, createdAt: new Date().toISOString(), isVoice: true };
-      const withAI = [...updatedMessages, aiMsg];
-      setMessages(withAI);
-
-      const conv2 = getConversation(conversation.id);
-      if (conv2) { conv2.messages = withAI; saveConversation(conv2); }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Błąd");
-    }
-  }
-
-  const handleMicPress = () => {
-    if (voiceState === "listening") { stopListening(); return; }
-    if (voiceState === "speaking") { abort(); return; }
-    startListening();
+    const c = getConversation(conversation.id);
+    if (c) { c.visionerModeActive = newVal; saveConversation(c); }
   };
 
   const handleFullscreen = () => {
@@ -158,21 +168,9 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
     }
   };
 
-  if (!isSupported) {
-    return (
-      <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center gap-4 p-8">
-        <X className="absolute top-6 right-6 text-gray-400 cursor-pointer" size={24} onClick={onClose} />
-        <p className="text-center text-gray-500 max-w-xs">
-          Twoja przeglądarka nie obsługuje rozpoznawania mowy.<br />
-          Użyj <strong>Chrome</strong> lub <strong>Edge</strong> dla trybu głosowego.
-        </p>
-        <button onClick={onClose} className="px-6 py-2 bg-[#1A1A2E] text-white rounded-xl text-sm">wróć do czatu</button>
-      </div>
-    );
-  }
-
   const isListening = voiceState === "listening";
   const isSpeaking = voiceState === "speaking";
+  const isThinking = voiceState === "thinking";
 
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-between py-10 px-6">
@@ -183,7 +181,6 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
           <span className="text-sm text-gray-400">{folderLabel}</span>
         </div>
         <div className="flex items-center gap-2">
-          {/* Wizjoner toggle — always visible in voice mode */}
           <VisionerToggle enabled={visionerMode} onToggle={toggleVisioner} compact />
           <button
             onClick={handleFullscreen}
@@ -193,7 +190,7 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
             <Maximize2 size={14} />
           </button>
           <button
-            onClick={() => { abort(); onClose(); }}
+            onClick={() => { endSession(); onClose(); }}
             className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
           >
             <X size={14} />
@@ -202,89 +199,116 @@ export default function VoiceChat({ conversation, profile, onClose }: VoiceChatP
       </div>
 
       {/* ── Central section ── */}
-      <div className="flex flex-col items-center gap-6 flex-1 justify-center w-full max-w-sm">
-        {/* Orb with glow wrapper */}
-        <div className={cn(
-          "relative flex items-center justify-center",
-          isSpeaking && "orb-glow",
-        )}>
+      <div className="flex flex-col items-center gap-4 flex-1 justify-center w-full max-w-sm overflow-hidden">
+        {/* Orb */}
+        <div className={cn("relative flex items-center justify-center", isSpeaking && "orb-glow")}>
           <AvatarOrb size="xl" state={voiceState} />
         </div>
 
         {/* State label */}
         <p className="text-[#1A1A2E] font-medium text-base">{STATE_LABELS[voiceState]}</p>
 
-        {/* Waveform — visible during listening */}
-        <div className="h-10 flex items-center justify-center">
-          {isListening && (
-            // eslint-disable-next-line react-hooks/exhaustive-deps
-            <AudioWaveform level={audioLevel} active={isListening} key={tick} />
-          )}
-          {isSpeaking && (
-            <AudioWaveform level={0.6} active={true} key={tick} />
+        {/* Waveform bars */}
+        <div className="h-8 flex items-center gap-1">
+          {(isListening || isSpeaking) &&
+            Array.from({ length: 5 }).map((_, i) => {
+              const phase = Math.sin(Date.now() / 300 + i * 1.2) * 0.5 + 0.5;
+              const h = isSpeaking ? 8 + phase * 24 : 8 + phase * 16;
+              return (
+                <div
+                  key={`${i}-${tick}`}
+                  className="w-1 rounded-full bg-[#F5A623] transition-all duration-75"
+                  style={{ height: `${h}px`, opacity: 0.85 }}
+                />
+              );
+            })}
+          {isThinking && (
+            <div className="flex gap-1">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-bounce"
+                  style={{ animationDelay: `${i * 150}ms` }}
+                />
+              ))}
+            </div>
           )}
         </div>
 
-        {/* Live transcript — visible while listening AND while thinking (Whisper returns after stop) */}
-        {(isListening || voiceState === "thinking") && liveTranscript && (
-          <p className="text-sm text-gray-500 text-center max-w-xs animate-fade-in italic">
-            &bdquo;{liveTranscript}&rdquo;
-          </p>
-        )}
-
-        {/* Foun response preview */}
-        {isSpeaking && latestResponse && (
-          <p className="text-sm text-amber-600 text-center max-w-xs leading-relaxed line-clamp-3 animate-fade-in">
-            {latestResponse}
-          </p>
+        {/* Conversation log — scrollable, shows last few exchanges */}
+        {sessionActive && chatLog.length > 0 && (
+          <div className="w-full max-h-48 overflow-y-auto flex flex-col gap-2 mt-2">
+            {chatLog.slice(-6).map((msg, i) => (
+              <div
+                key={i}
+                className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}
+              >
+                <div
+                  className={cn(
+                    "max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed",
+                    msg.role === "user"
+                      ? "bg-gray-100 text-gray-700 rounded-br-sm"
+                      : "bg-amber-50 border border-amber-100 text-amber-800 rounded-bl-sm"
+                  )}
+                >
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {/* Live in-progress bubbles */}
+            {currentUserText && (
+              <div className="flex justify-end">
+                <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-sm bg-gray-100 text-gray-700 text-sm leading-relaxed italic opacity-70">
+                  {currentUserText}
+                </div>
+              </div>
+            )}
+            {currentFounText && (
+              <div className="flex justify-start">
+                <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-bl-sm bg-amber-50 border border-amber-100 text-amber-800 text-sm leading-relaxed">
+                  {currentFounText}
+                  <span className="inline-block w-1 h-3 ml-1 bg-amber-400 animate-pulse rounded-sm" />
+                </div>
+              </div>
+            )}
+            <div ref={chatLogEndRef} />
+          </div>
         )}
 
         {error && (
-          <p className="text-red-400 text-xs text-center max-w-xs">{error}</p>
+          <p className="text-red-400 text-xs text-center max-w-xs mt-2">{error}</p>
         )}
       </div>
 
       {/* ── Bottom controls ── */}
-      <div className="flex flex-col items-center gap-4 w-full">
-        {/* Auto-mode toggle */}
-        <button
-          onClick={toggleAutoMode}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all",
-            autoMode
-              ? "bg-amber-100 text-amber-700 border border-amber-300"
-              : "bg-gray-100 text-gray-500 border border-transparent"
-          )}
-        >
-          <Repeat2 size={14} />
-          tryb ciągły {autoMode ? "on" : "off"}
-        </button>
-
-        {/* Mic button */}
-        <div className="flex flex-col items-center gap-2">
-          <button
-            onClick={handleMicPress}
-            disabled={voiceState === "thinking"}
-            className={cn(
-              "w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 shadow-lg",
-              isListening
-                ? "bg-red-500 text-white scale-110 shadow-red-200"
-                : isSpeaking
-                ? "bg-gray-200 text-gray-600"
-                : voiceState === "thinking"
-                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                : "bg-[#F5A623] text-white hover:bg-amber-500 shadow-amber-200"
-            )}
-          >
-            {isListening ? <MicOff size={28} /> : <Mic size={28} />}
-          </button>
-          <p className="text-xs text-gray-400">
-            {voiceState === "idle" && "naciśnij i mów"}
-            {isListening && "naciśnij aby wysłać"}
-            {isSpeaking && `${founName} mówi — naciśnij aby zatrzymać`}
-            {voiceState === "thinking" && "czekam na odpowiedź..."}
-          </p>
-        </div>
+      <div className="flex flex-col items-center gap-3 w-full">
+        {sessionActive ? (
+          <>
+            <p className="text-xs text-gray-400 text-center">
+              mów swobodnie — {founName} słucha automatycznie
+            </p>
+            <button
+              onClick={endSession}
+              className="w-20 h-20 rounded-full flex items-center justify-center bg-red-500 text-white shadow-lg shadow-red-200 hover:bg-red-600 transition-all duration-200"
+            >
+              <PhoneOff size={28} />
+            </button>
+            <p className="text-xs text-gray-400">zakończ rozmowę</p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-gray-400 text-center">
+              naciśnij aby połączyć się z {founName}
+            </p>
+            <button
+              onClick={startSession}
+              className="w-20 h-20 rounded-full flex items-center justify-center bg-[#F5A623] text-white shadow-lg shadow-amber-200 hover:bg-amber-500 transition-all duration-200"
+            >
+              <Phone size={28} />
+            </button>
+            <p className="text-xs text-gray-400">rozpocznij rozmowę</p>
+          </>
+        )}
       </div>
     </div>
   );
